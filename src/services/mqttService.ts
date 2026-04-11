@@ -6,15 +6,17 @@ class MQTTService {
   private isConnected: boolean = false;
 
   /**
-   * Initialize MQTT client and connect to broker
+   * Initialize MQTT client and connect to broker.
+   * One-shot connect → publish → disconnect is safe for Vercel serverless.
+   * For persistent gateway subscriptions, the gateway firmware connects directly.
    */
   async connect(): Promise<void> {
     return new Promise((resolve, reject) => {
       const options: mqtt.IClientOptions = {
-        clientId: config.mqtt.clientId,
-        clean: true,
-        connectTimeout: 4000,
-        reconnectPeriod: 1000,
+        clientId:         `${config.mqtt.clientId}-${Date.now()}`,
+        clean:            true,
+        connectTimeout:   5000,
+        reconnectPeriod:  0,    // no auto-reconnect in serverless context
       };
 
       if (config.mqtt.username) {
@@ -27,7 +29,6 @@ class MQTTService {
       this.client.on('connect', () => {
         this.isConnected = true;
         console.log(`[MQTT] Connected to broker: ${config.mqtt.brokerUrl}`);
-        console.log(`[MQTT] Publishing to topic: ${config.mqtt.publishTopic}`);
         resolve();
       });
 
@@ -37,63 +38,41 @@ class MQTTService {
         reject(error);
       });
 
-      this.client.on('reconnect', () => {
-        console.log('[MQTT] Reconnecting...');
-      });
-
       this.client.on('offline', () => {
-        console.log('[MQTT] Client offline');
         this.isConnected = false;
       });
 
       this.client.on('close', () => {
-        console.log('[MQTT] Connection closed');
         this.isConnected = false;
       });
     });
   }
 
   /**
-   * Publish sensor data to MQTT topic for real-time updates
+   * Publish sensor data to the live-data topic.
    */
   async publishSensorData(data: any): Promise<boolean> {
-    if (!this.client || !this.isConnected) {
-      console.warn('[MQTT] Client not connected, skipping publish');
-      return false;
-    }
-
-    return new Promise((resolve) => {
-      const payload = JSON.stringify(data);
-      
-      this.client!.publish(
-        config.mqtt.publishTopic,
-        payload,
-        { qos: config.mqtt.qos, retain: false },
-        (error) => {
-          if (error) {
-            console.error('[MQTT] Publish error:', error);
-            resolve(false);
-          } else {
-            console.log(`[MQTT] Published data (seq: ${data.sequence || 'N/A'})`);
-            resolve(true);
-          }
-        }
-      );
-    });
+    return this.publishEvent(config.mqtt.publishTopic, data);
   }
 
   /**
-   * Publish custom event
+   * Publish any payload to any topic.
+   * Handles connect-publish-disconnect cycle automatically for serverless.
    */
   async publishEvent(topic: string, data: any): Promise<boolean> {
+    // If not connected, attempt a fresh connection
     if (!this.client || !this.isConnected) {
-      console.warn('[MQTT] Client not connected, skipping publish');
-      return false;
+      try {
+        await this.connect();
+      } catch {
+        console.warn('[MQTT] Could not connect — skipping publish');
+        return false;
+      }
     }
 
     return new Promise((resolve) => {
       const payload = JSON.stringify(data);
-      
+
       this.client!.publish(
         topic,
         payload,
@@ -103,7 +82,7 @@ class MQTTService {
             console.error('[MQTT] Publish error:', error);
             resolve(false);
           } else {
-            console.log(`[MQTT] Published to ${topic}`);
+            console.log(`[MQTT] Published → ${topic}`);
             resolve(true);
           }
         }
@@ -112,20 +91,22 @@ class MQTTService {
   }
 
   /**
-   * Check if client is connected
+   * Publish a typed command to a specific gateway topic.
+   * commands/gateway/{gatewayHardwareId}
    */
+  async publishGatewayCommand(gatewayHardwareId: string, payload: any): Promise<boolean> {
+    const topic = `commands/gateway/${gatewayHardwareId}`;
+    return this.publishEvent(topic, payload);
+  }
+
   isClientConnected(): boolean {
     return this.isConnected;
   }
 
-  /**
-   * Disconnect from MQTT broker
-   */
   async disconnect(): Promise<void> {
     if (this.client) {
       return new Promise((resolve) => {
         this.client!.end(false, {}, () => {
-          console.log('[MQTT] Disconnected');
           this.isConnected = false;
           resolve();
         });

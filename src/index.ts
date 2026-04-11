@@ -8,33 +8,28 @@ import config from './config';
 import { connectDatabase } from './services/database';
 import mqttService from './services/mqttService';
 
-// Import routes
-import authRoutes from './routes/auth';
+// Routes
+import authRoutes       from './routes/auth';
 import sensorDataRoutes from './routes/sensorData';
+import gatewayRoutes    from './routes/gateways';
+import registryRoutes   from './routes/registry';
 
 const app: Application = express();
 
 // =====================================================
 // Middleware
 // =====================================================
-
-// Security headers
 app.use(helmet());
 
-// CORS
 app.use(cors({
-  origin: config.cors.origins,
+  origin:      config.cors.origins,
   credentials: true,
 }));
 
-// Body parsing
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
-
-// Compression
 app.use(compression());
 
-// Logging
 if (config.env === 'development') {
   app.use(morgan('dev'));
 } else {
@@ -44,47 +39,38 @@ if (config.env === 'development') {
 // Rate limiting
 const limiter = rateLimit({
   windowMs: config.rateLimit.windowMs,
-  max: config.rateLimit.maxRequests,
-  message: {
-    success: false,
-    message: 'Too many requests, please try again later',
-  },
+  max:      config.rateLimit.maxRequests,
+  message:  { success: false, message: 'Too many requests, please try again later' },
   standardHeaders: true,
-  legacyHeaders: false,
+  legacyHeaders:   false,
 });
-
 app.use('/api/', limiter);
 
 // =====================================================
 // Routes
 // =====================================================
-
-// Health check
 app.get('/health', (_req: Request, res: Response) => {
   res.json({
-    success: true,
-    message: 'API is healthy',
+    success:   true,
+    message:   'API is healthy',
     timestamp: new Date().toISOString(),
-    mqtt: mqttService.isClientConnected(),
+    mqtt:      mqttService.isClientConnected(),
   });
 });
 
-// API routes
-app.use('/api/auth', authRoutes);
+app.use('/api/auth',        authRoutes);
 app.use('/api/sensor-data', sensorDataRoutes);
+app.use('/api/gateways',    gatewayRoutes);
+app.use('/api/registry',    registryRoutes);   // gateway firmware endpoints
 
-// 404 handler
+// 404
 app.use((_req: Request, res: Response) => {
-  res.status(404).json({
-    success: false,
-    message: 'Endpoint not found',
-  });
+  res.status(404).json({ success: false, message: 'Endpoint not found' });
 });
 
 // Global error handler
 app.use((err: any, _req: Request, res: Response, _next: any) => {
   console.error('[Error]', err);
-  
   res.status(err.status || 500).json({
     success: false,
     message: err.message || 'Internal server error',
@@ -95,48 +81,41 @@ app.use((err: any, _req: Request, res: Response, _next: any) => {
 // =====================================================
 // Startup
 // =====================================================
-
 async function startServer() {
   try {
-    // Connect to MongoDB
     await connectDatabase();
 
-    // Connect to MQTT broker (for broadcasting)
     try {
       await mqttService.connect();
-    } catch (error) {
-      console.warn('[MQTT] Failed to connect, continuing without MQTT broadcasting');
+    } catch {
+      console.warn('[MQTT] Failed to connect — continuing without MQTT');
     }
 
-    // Start Express server
     app.listen(config.port, () => {
       console.log('\n==============================================');
-      console.log(`🚀 Water Quality Monitor API`);
-      console.log(`==============================================`);
-      console.log(`Environment: ${config.env}`);
-      console.log(`Server: ${config.apiBaseUrl}`);
-      console.log(`Port: ${config.port}`);
-      console.log(`MongoDB: ${config.mongodb.uri.includes('@') ? 'Connected (Atlas)' : 'Connected (Local)'}`);
-      console.log(`MQTT: ${mqttService.isClientConnected() ? 'Connected' : 'Disabled'}`);
-      console.log(`==============================================\n`);
+      console.log('🚀 Water Quality Monitor API');
+      console.log('==============================================');
+      console.log(`Environment : ${config.env}`);
+      console.log(`Server      : ${config.apiBaseUrl}`);
+      console.log(`Port        : ${config.port}`);
+      console.log(`MongoDB     : ${config.mongodb.uri.includes('@') ? 'Atlas' : 'Local'}`);
+      console.log(`MQTT        : ${mqttService.isClientConnected() ? 'Connected' : 'Disabled'}`);
+      console.log('==============================================\n');
     });
   } catch (error) {
-    console.error('[Startup] Failed to start server:', error);
+    console.error('[Startup] Failed:', error);
     process.exit(1);
   }
 }
 
-// Handle unhandled rejections
 process.on('unhandledRejection', (reason: any) => {
   console.error('[Unhandled Rejection]', reason);
   process.exit(1);
 });
 
-// Start server only if not in serverless environment
 if (process.env.VERCEL !== '1') {
   startServer();
 } else {
-  // In Vercel, just initialize connections
   connectDatabase().catch(console.error);
   mqttService.connect().catch(() => console.warn('[MQTT] Disabled in serverless'));
 }
