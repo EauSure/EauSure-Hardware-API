@@ -1,7 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
 import config from '../config';
-import { IUser } from '../models/User';
+
 
 // =====================================================
 // JWTPayload — access token claims
@@ -12,13 +12,6 @@ export interface JWTPayload {
   exp?: number;
 }
 
-// Refresh token has a distinct claim key to avoid
-// accidentally accepting a refresh token as an access token.
-interface RefreshPayload {
-  userId: string;
-  iat?: number;
-  exp?: number;
-}
 
 declare global {
   namespace Express {
@@ -28,57 +21,12 @@ declare global {
   }
 }
 
-// =====================================================
-// Token generation
-// =====================================================
 
-/**
- * generateAccessToken
- * Short-lived JWT (15 min) — verified by `authenticate` middleware.
- * Claim key: "id"  (matches JWTPayload interface)
- */
-export function generateAccessToken(user: IUser): string {
-  return jwt.sign(
-    { id: user._id.toString() },
-    config.jwt.secret,
-    { expiresIn: '15m' }
-  );
-}
 
-/**
- * generateRefreshToken
- * Long-lived JWT (7 days) — used only in POST /api/auth/refresh.
- * Claim key: "userId"  (distinct from access token to prevent misuse)
- */
-export function generateRefreshToken(user: IUser): string {
-  return jwt.sign(
-    { userId: user._id.toString() },
-    config.jwt.secret,
-    { expiresIn: '7d' }
-  );
-}
 
-/**
- * verifyToken
- * Verifies either an access or refresh token.
- * Returns the decoded payload — caller decides which fields to use.
- *
- * @param token     - raw JWT string
- * @param isRefresh - true → expect refresh token (payload.userId)
- *                    false → expect access token  (payload.id)
- */
-export function verifyToken(token: string, isRefresh = false): RefreshPayload & JWTPayload {
-  const decoded = jwt.verify(token, config.jwt.secret) as RefreshPayload & JWTPayload;
 
-  if (isRefresh && !decoded.userId) {
-    throw new Error('Not a refresh token');
-  }
-  if (!isRefresh && !decoded.id) {
-    throw new Error('Not an access token');
-  }
 
-  return decoded;
-}
+
 
 // =====================================================
 // authenticate  — JWT middleware (access token)

@@ -9,7 +9,6 @@ import { connectDatabase } from './services/database';
 import mqttService from './services/mqttService';
 
 // Routes
-import authRoutes       from './routes/auth';
 import sensorDataRoutes from './routes/sensorData';
 import gatewayRoutes    from './routes/gateways';
 import registryRoutes   from './routes/registry';
@@ -58,7 +57,6 @@ app.get('/health', (_req: Request, res: Response) => {
   });
 });
 
-app.use('/api/auth',        authRoutes);
 app.use('/api/sensor-data', sensorDataRoutes);
 app.use('/api/gateways',    gatewayRoutes);
 app.use('/api/registry',    registryRoutes);   // gateway firmware endpoints
