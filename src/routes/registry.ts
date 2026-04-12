@@ -205,6 +205,12 @@ router.post(
   authenticateGateway,
   [body('cmdId').isString().notEmpty()],
   async (req: Request, res: Response): Promise<void> => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      res.status(400).json({ success: false, errors: errors.array() });
+      return;
+    }
+
     try {
       await ackCommand(req.body.cmdId);
       res.json({ success: true });
