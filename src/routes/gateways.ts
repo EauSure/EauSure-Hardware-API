@@ -18,7 +18,7 @@ router.use(authenticate);
 // =====================================================
 router.get('/', async (req: Request, res: Response): Promise<void> => {
   try {
-    const gateways = await Gateway.find({ ownerId: req.user!._id })
+    const gateways = await Gateway.find({ ownerId: req.user!.id })
       .select('-deviceSecret -pairingToken')
       .sort({ createdAt: -1 });
 
@@ -67,7 +67,7 @@ router.post(
       }
 
       // Check if already owned by someone else
-      if (gateway.ownerId && !gateway.ownerId.equals(req.user!._id as any)) {
+      if (gateway.ownerId && !gateway.ownerId.equals(req.user!.id as any)) {
         res.status(409).json({ success: false, message: 'Gateway already paired to another account' });
         return;
       }
@@ -81,7 +81,7 @@ router.post(
       }
 
       // All good — link gateway to user
-      gateway.ownerId  = req.user!._id as unknown as mongoose.Types.ObjectId;
+      gateway.ownerId  = req.user!.id as unknown as mongoose.Types.ObjectId;
       gateway.pairedAt = new Date();
       gateway.name     = name || gateway.name;
       gateway.mqttTopic = `commands/gateway/${gateway.gatewayId}`;
@@ -121,7 +121,7 @@ router.delete(
     try {
       const gateway = await Gateway.findOne({
         _id:     req.params.gatewayId,
-        ownerId: req.user!._id,
+        ownerId: req.user!.id,
       });
 
       if (!gateway) {
@@ -166,7 +166,7 @@ router.get(
     try {
       const gateway = await Gateway.findOne({
         _id:     req.params.gatewayId,
-        ownerId: req.user!._id,
+        ownerId: req.user!.id,
       }).select('gatewayId name status lastSeenAt');
 
       if (!gateway) {
@@ -205,7 +205,7 @@ router.put(
 
       const gateway = await Gateway.findOne({
         _id:     req.params.gatewayId,
-        ownerId: req.user!._id,
+        ownerId: req.user!.id,
       });
 
       if (!gateway) {
@@ -255,7 +255,7 @@ router.get(
     try {
       const gateway = await Gateway.findOne({
         _id:     req.params.gatewayId,
-        ownerId: req.user!._id,
+        ownerId: req.user!.id,
       });
 
       if (!gateway) {
@@ -295,7 +295,7 @@ router.post(
       // Verify gateway belongs to user
       const gateway = await Gateway.findOne({
         _id:     req.params.gatewayId,
-        ownerId: req.user!._id,
+        ownerId: req.user!.id,
       });
 
       if (!gateway) {
@@ -389,7 +389,7 @@ router.delete(
     try {
       const gateway = await Gateway.findOne({
         _id:     req.params.gatewayId,
-        ownerId: req.user!._id,
+        ownerId: req.user!.id,
       });
 
       if (!gateway) {
@@ -437,7 +437,7 @@ router.post(
     try {
       const gateway = await Gateway.findOne({
         _id:     req.params.gatewayId,
-        ownerId: req.user!._id,
+        ownerId: req.user!.id,
       });
 
       if (!gateway) {
@@ -504,7 +504,7 @@ router.put(
 
       const gateway = await Gateway.findOne({
         _id:     req.params.gatewayId,
-        ownerId: req.user!._id,
+        ownerId: req.user!.id,
       });
 
       if (!gateway) {

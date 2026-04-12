@@ -220,6 +220,81 @@ router.post(
   }
 );
 
+router.post(
+  '/gateway/provision',
+  [
+    body('gatewayHardwareId').isString().notEmpty(),
+    body('firmwareVersion').optional().isString(),
+    body('token').isString().notEmpty(),
+    body('gatewayName').optional().isString(),
+  ],
+  async (req: Request, res: Response): Promise<void> => {
+    try {
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        res.status(400).json({ success: false, errors: errors.array() });
+        return;
+      }
+
+      const { gatewayHardwareId, firmwareVersion, token, gatewayName } = req.body;
+
+      // Verify JWT from UI auth service
+      let payload: any;
+      try {
+        payload = jwt.verify(token, config.jwt.secret) as { id: string };
+      } catch {
+        res.status(401).json({ success: false, message: 'Invalid token' });
+        return;
+      }
+
+      const gateway = await Gateway.findOne({ gatewayId: gatewayHardwareId });
+      if (!gateway) {
+        res.status(404).json({ success: false, message: 'Gateway not found' });
+        return;
+      }
+
+      if (gateway.ownerId && gateway.ownerId.toString() !== payload.id) {
+        res.status(409).json({ success: false, message: 'Gateway already linked to another account' });
+        return;
+      }
+
+      gateway.ownerId = payload.id as any;
+      gateway.pairedAt = new Date();
+      gateway.lastSeenAt = new Date();
+      gateway.status.online = true;
+      gateway.status.lastHeartbeatAt = new Date();
+
+      if (firmwareVersion) {
+        gateway.status.firmwareVersion = firmwareVersion;
+      }
+
+      if (gatewayName && String(gatewayName).trim()) {
+        gateway.name = String(gatewayName).trim();
+      }
+
+      if (!gateway.mqttTopic) {
+        gateway.mqttTopic = `commands/gateway/${gateway.gatewayId}`;
+      }
+
+      await gateway.save();
+
+      res.json({
+        success: true,
+        message: 'Gateway provisioned',
+        data: {
+          gatewayId: gateway.gatewayId,
+          name: gateway.name,
+          mqttTopic: gateway.mqttTopic,
+          config: gateway.config,
+        },
+      });
+    } catch (err) {
+      console.error('[Registry] gateway provision error:', err);
+      res.status(500).json({ success: false, message: 'Gateway provisioning failed' });
+    }
+  }
+);
+
 // =====================================================
 // POST /api/registry/gateway/node-status
 // Gateway reports IoT node status update
@@ -241,7 +316,10 @@ router.post(
     try {
       const { nodeId, active, rssi, snr } = req.body;
 
-      const node = await IotNode.findOne({ nodeId });
+      const node = await IotNode.findOne({
+          nodeId,
+          gatewayHardwareId: req.body.gatewayHardwareId,
+        });
       if (!node) {
         res.status(404).json({ success: false, message: 'Node not found' });
         return;

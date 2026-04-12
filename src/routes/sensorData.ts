@@ -162,7 +162,7 @@ router.get(
       const skip  = (page - 1) * limit;
 
       // Always scope to authenticated user
-      const filter: any = { userId: req.user!._id };
+      const filter: any = { userId: req.user!.id };
 
       if (req.query.gatewayId) filter.gatewayId = req.query.gatewayId;
       if (req.query.nodeId)    filter.nodeId     = req.query.nodeId;
@@ -205,7 +205,7 @@ router.get(
   authenticate,
   async (req: Request, res: Response): Promise<void> => {
     try {
-      const filter: any = { userId: req.user!._id };
+      const filter: any = { userId: req.user!.id };
       if (req.query.nodeId)    filter.nodeId    = req.query.nodeId;
       if (req.query.gatewayId) filter.gatewayId = req.query.gatewayId;
 
@@ -236,7 +236,7 @@ router.get(
     try {
       const hours = parseInt(req.query.hours as string) || 24;
       const filter: any = {
-        userId:    req.user!._id,
+        userId:    req.user!.id,
         timestamp: { $gte: new Date(Date.now() - hours * 60 * 60 * 1000) },
       };
 
