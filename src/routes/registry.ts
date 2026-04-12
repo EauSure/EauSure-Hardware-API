@@ -223,6 +223,84 @@ router.post(
 );
 
 router.post(
+  '/pair-node',
+  [
+    body('gatewayHardwareId').isString().notEmpty(),
+    body('nodeId').isString().notEmpty(),
+    body('nodeName').optional().isString(),
+    body('nodeBleMac').optional().isString(),
+    body('token').isString().notEmpty(),
+  ],
+  async (req: Request, res: Response): Promise<void> => {
+    try {
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        res.status(400).json({ success: false, errors: errors.array() });
+        return;
+      }
+
+      const { gatewayHardwareId, nodeId, nodeName, nodeBleMac, token } = req.body;
+
+      let payload: any;
+      try {
+        payload = jwt.verify(token, config.jwt.secret) as { id: string };
+      } catch {
+        res.status(401).json({ success: false, message: 'Invalid token' });
+        return;
+      }
+
+      const gateway = await Gateway.findOne({ gatewayId: gatewayHardwareId });
+      if (!gateway || !gateway.ownerId || gateway.ownerId.toString() !== payload.id) {
+        res.status(404).json({ success: false, message: 'Gateway not found for this user' });
+        return;
+      }
+
+      let node = await IotNode.findOne({ nodeId });
+
+      const aesKey = '00112233445566778899AABBCCDDEEFF'; // temporary, replace later with generated key
+
+      if (!node) {
+        node = new IotNode({
+          nodeId,
+          gatewayId: gateway._id,
+          gatewayHardwareId,
+          name: nodeName || `Node ${nodeId}`,
+          bleMac: nodeBleMac || '',
+          encryptionKey: aesKey,
+          status: {
+            active: false,
+            lastSeenAt: new Date(),
+          },
+        });
+      } else {
+        node.gatewayId = gateway._id;
+        (node as any).gatewayHardwareId = gatewayHardwareId;
+        (node as any).name = nodeName || (node as any).name;
+        (node as any).bleMac = nodeBleMac || (node as any).bleMac;
+        (node as any).encryptionKey = aesKey;
+        node.status.lastSeenAt = new Date();
+      }
+
+      await node.save();
+
+      res.json({
+        success: true,
+        message: 'Node paired',
+        data: {
+          gatewayHardwareId,
+          nodeId,
+          aesKey,
+          nodeName: nodeName || `Node ${nodeId}`,
+        },
+      });
+    } catch (err) {
+      console.error('[Registry] pair-node error:', err);
+      res.status(500).json({ success: false, message: 'Pairing failed' });
+    }
+  }
+);
+
+router.post(
   '/gateway/provision',
   [
     body('gatewayHardwareId').isString().notEmpty(),
