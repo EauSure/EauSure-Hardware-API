@@ -23,10 +23,7 @@ interface Config {
   gateway: {
     apiKey: string;
   };
-  encryption: {
-    deviceId: string;
-    key: string;
-  };
+  
   rateLimit: {
     windowMs: number;
     maxRequests: number;
@@ -68,10 +65,7 @@ const config: Config = {
     apiKey: process.env.GATEWAY_API_KEY || 'dev-gateway-key-change-in-production',
   },
 
-  encryption: {
-    deviceId: process.env.DEVICE_ID,
-    key:      process.env.ENCRYPTION_KEY,
-  },
+  
 
   rateLimit: {
     windowMs:    parseInt(process.env.RATE_LIMIT_WINDOW_MS      || '900000', 10),
@@ -89,7 +83,7 @@ const config: Config = {
 
 // Production guards
 if (config.env === 'production') {
-  const required = ['JWT_SECRET', 'MONGODB_URI', 'GATEWAY_API_KEY', 'ENCRYPTION_KEY'];
+  const required = ['JWT_SECRET', 'MONGODB_URI', 'GATEWAY_API_KEY'];
   const missing  = required.filter(v => !process.env[v]);
 
   if (missing.length > 0) {
