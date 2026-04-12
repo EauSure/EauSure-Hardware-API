@@ -8,6 +8,7 @@ import { ackCommand } from '../services/commandService';
 import Command from '../models/Command';
 import jwt from 'jsonwebtoken';
 import config from '../config';
+import { generateEncryptionKey } from '../services/pairingService';
 
 const router = express.Router();
 
@@ -257,7 +258,7 @@ router.post(
 
       let node = await IotNode.findOne({ nodeId });
 
-      const aesKey = '00112233445566778899AABBCCDDEEFF'; // temporary, replace later with generated key
+      const aesKey = generateEncryptionKey();// temporary, replace later with generated key
 
       if (!node) {
         node = new IotNode({
