@@ -3,12 +3,12 @@ import { body, validationResult } from 'express-validator';
 import Gateway from '../models/Gateway';
 import IotNode from '../models/IotNode';
 import { authenticateGateway } from '../middleware/auth';
-import { generatePairingToken, tokenExpiresAt } from '../services/pairingService';
+import { generatePairingToken, tokenExpiresAt, generateEncryptionKey } from '../services/pairingService';
 import { ackCommand } from '../services/commandService';
 import Command from '../models/Command';
 import jwt from 'jsonwebtoken';
 import config from '../config';
-import { generateEncryptionKey } from '../services/pairingService';
+
 
 const router = express.Router();
 
