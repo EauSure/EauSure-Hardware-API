@@ -249,36 +249,53 @@ router.post(
         return;
       }
 
-      const gateway = await Gateway.findOne({ gatewayId: gatewayHardwareId });
-      if (!gateway) {
-        res.status(404).json({ success: false, message: 'Gateway not found' });
-        return;
-      }
+      let gateway = await Gateway.findOne({ gatewayId: gatewayHardwareId });
 
-      if (gateway.ownerId && gateway.ownerId.toString() !== payload.id) {
-        res.status(409).json({ success: false, message: 'Gateway already linked to another account' });
-        return;
-      }
+        if (!gateway) {
+          gateway = new Gateway({
+            gatewayId: gatewayHardwareId,
+            ownerId: payload.id as any,
+            pairedAt: new Date(),
+            lastSeenAt: new Date(),
+            mqttTopic: `commands/gateway/${gatewayHardwareId}`,
+            status: {
+              online: true,
+              lastHeartbeatAt: new Date(),
+              firmwareVersion: firmwareVersion || '',
+            },
+            name: gatewayName && String(gatewayName).trim()
+              ? String(gatewayName).trim()
+              : `Gateway ${gatewayHardwareId.slice(-6)}`,
+          });
+        } else {
+          if (gateway.ownerId && gateway.ownerId.toString() !== payload.id) {
+            res.status(409).json({
+              success: false,
+              message: 'Gateway already linked to another account'
+            });
+            return;
+          }
 
-      gateway.ownerId = payload.id as any;
-      gateway.pairedAt = new Date();
-      gateway.lastSeenAt = new Date();
-      gateway.status.online = true;
-      gateway.status.lastHeartbeatAt = new Date();
+          gateway.ownerId = payload.id as any;
+          gateway.pairedAt = gateway.pairedAt || new Date();
+          gateway.lastSeenAt = new Date();
+          gateway.status.online = true;
+          gateway.status.lastHeartbeatAt = new Date();
 
-      if (firmwareVersion) {
-        gateway.status.firmwareVersion = firmwareVersion;
-      }
+          if (firmwareVersion) {
+            gateway.status.firmwareVersion = firmwareVersion;
+          }
 
-      if (gatewayName && String(gatewayName).trim()) {
-        gateway.name = String(gatewayName).trim();
-      }
+          if (gatewayName && String(gatewayName).trim()) {
+            gateway.name = String(gatewayName).trim();
+          }
 
-      if (!gateway.mqttTopic) {
-        gateway.mqttTopic = `commands/gateway/${gateway.gatewayId}`;
-      }
+          if (!gateway.mqttTopic) {
+            gateway.mqttTopic = `commands/gateway/${gateway.gatewayId}`;
+          }
+        }
 
-      await gateway.save();
+        await gateway.save();
 
       res.json({
         success: true,
