@@ -6,6 +6,8 @@ import { authenticateGateway } from '../middleware/auth';
 import { generatePairingToken, tokenExpiresAt } from '../services/pairingService';
 import { ackCommand } from '../services/commandService';
 import Command from '../models/Command';
+import jwt from 'jsonwebtoken';
+import config from '../config';
 
 const router = express.Router();
 
