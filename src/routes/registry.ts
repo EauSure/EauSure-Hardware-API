@@ -458,6 +458,74 @@ router.post(
   }
 );
 
+router.post(
+  '/pair-node/rollback',
+  [
+    body('gatewayHardwareId').isString().notEmpty(),
+    body('nodeId').isString().notEmpty(),
+    body('token').isString().notEmpty(),
+  ],
+  async (req: Request, res: Response): Promise<void> => {
+    const route = 'Registry/pair-node/rollback';
+
+    try {
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        res.status(400).json({ success: false, errors: errors.array() });
+        return;
+      }
+
+      const { gatewayHardwareId, nodeId, token } = req.body;
+
+      let payload: any;
+      try {
+        payload = jwt.verify(token, config.jwt.secret) as { id: string };
+      } catch {
+        res.status(401).json({ success: false, message: 'Invalid token' });
+        return;
+      }
+
+      const gateway = await Gateway.findOne({ gatewayId: gatewayHardwareId });
+      if (!gateway) {
+        res.status(404).json({ success: false, message: 'Gateway not found' });
+        return;
+      }
+
+      if (!gateway.ownerId || gateway.ownerId.toString() !== payload.id) {
+        res.status(403).json({ success: false, message: 'Forbidden' });
+        return;
+      }
+
+      const node = await IotNode.findOne({
+        nodeId,
+        gatewayId: gateway._id,
+        gatewayHardwareId,
+      });
+
+      if (!node) {
+        res.json({ success: true, message: 'Nothing to rollback' });
+        return;
+      }
+
+      node.gatewayId = null;
+      node.gatewayHardwareId = null;
+      node.encryptionKey = null;
+      node.pairedAt = null;
+      node.status.active = false;
+      await node.save();
+
+      res.json({
+        success: true,
+        message: 'Pairing rollback complete',
+        data: { nodeId, gatewayHardwareId }
+      });
+    } catch (err) {
+      console.error('[Registry] pair-node rollback error:', err);
+      res.status(500).json({ success: false, message: 'Rollback failed' });
+    }
+  }
+);
+
 // =====================================================
 // POST /api/registry/gateway/node-status
 // Gateway reports IoT node status update
