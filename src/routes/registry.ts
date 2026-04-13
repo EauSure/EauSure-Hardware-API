@@ -258,7 +258,7 @@ router.post(
 
       let node = await IotNode.findOne({ nodeId });
 
-      const aesKey = generateEncryptionKey();// temporary, replace later with generated key
+      const aesKey = generateEncryptionKey();
 
       if (!node) {
         node = new IotNode({
