@@ -1,11 +1,11 @@
 import mongoose, { Document, Schema } from 'mongoose';
 
 export interface IGatewayConfig {
-  measureInterval: number;      // seconds between auto-measures
+  measureInterval: number;
   shakeEnabled: boolean;
-  shakeThreshold: number;       // G force threshold
+  shakeThreshold: number;
   units: 'metric' | 'imperial';
-  nodeActive: boolean;          // ACTIVATE / DEACTIVATE the IoT node
+  nodeActive: boolean;
 }
 
 export interface IGatewayStatus {
@@ -17,33 +17,30 @@ export interface IGatewayStatus {
 }
 
 export interface IGateway extends Document {
-  gatewayId: string;            // hardware-burned unique ID (e.g. MAC-derived)
-  deviceSecret: string;         // burned at flash, used to verify QR HMAC — never sent to client
-  name: string;                 // user-friendly label
+  gatewayId: string;
+  deviceSecret: string;
+  name: string;
   ownerId: mongoose.Types.ObjectId | null;
   pairedAt: Date | null;
   lastSeenAt: Date | null;
-  mqttTopic: string;            // commands/gateway/{gatewayId}
+  mqttTopic: string;
   config: IGatewayConfig;
   status: IGatewayStatus;
-  // Pairing token (short-lived, generated on demand when user wants to pair)
-  pairingToken: string | null;
-  pairingTokenExpiresAt: Date | null;
 }
 
 const GatewayConfigSchema = new Schema<IGatewayConfig>({
   measureInterval: { type: Number, default: 60, min: 10, max: 3600 },
-  shakeEnabled:    { type: Boolean, default: true },
-  shakeThreshold:  { type: Number, default: 1.1, min: 0.5, max: 5.0 },
-  units:           { type: String, enum: ['metric', 'imperial'], default: 'metric' },
-  nodeActive:      { type: Boolean, default: true },
+  shakeEnabled: { type: Boolean, default: true },
+  shakeThreshold: { type: Number, default: 1.1, min: 0.5, max: 5.0 },
+  units: { type: String, enum: ['metric', 'imperial'], default: 'metric' },
+  nodeActive: { type: Boolean, default: true },
 }, { _id: false });
 
 const GatewayStatusSchema = new Schema<IGatewayStatus>({
-  online:          { type: Boolean, default: false },
+  online: { type: Boolean, default: false },
   lastHeartbeatAt: { type: Date, default: null },
-  rssi:            { type: Number, default: 0 },
-  snr:             { type: Number, default: 0 },
+  rssi: { type: Number, default: 0 },
+  snr: { type: Number, default: 0 },
   firmwareVersion: { type: String, default: '' },
 }, { _id: false });
 
@@ -57,7 +54,7 @@ const GatewaySchema = new Schema<IGateway>({
   deviceSecret: {
     type: String,
     required: false,
-    select: false,   // never returned in queries unless explicitly requested
+    select: false,
     default: null,
   },
   name: {
@@ -71,13 +68,11 @@ const GatewaySchema = new Schema<IGateway>({
     default: null,
     index: true,
   },
-  pairedAt:    { type: Date, default: null },
-  lastSeenAt:  { type: Date, default: null },
-  mqttTopic:   { type: String, default: '' },
-  config:      { type: GatewayConfigSchema, default: () => ({}) },
-  status:      { type: GatewayStatusSchema, default: () => ({}) },
-  pairingToken:          { type: String, default: null, select: false },
-  pairingTokenExpiresAt: { type: Date,   default: null },
+  pairedAt: { type: Date, default: null },
+  lastSeenAt: { type: Date, default: null },
+  mqttTopic: { type: String, default: '' },
+  config: { type: GatewayConfigSchema, default: () => ({}) },
+  status: { type: GatewayStatusSchema, default: () => ({}) },
 }, { timestamps: true });
 
 GatewaySchema.index({ ownerId: 1 });

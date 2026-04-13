@@ -9,25 +9,22 @@ export interface IIotNodeStatus {
 }
 
 export interface IIotNode extends Document {
-  nodeId: string;               // hardware DEVICE_ID (e.g. 0x7CB597E9)
-  deviceSecret: string;         // burned at flash, used to verify QR HMAC
-  name: string;                 // user-friendly label
-  gatewayId: mongoose.Types.ObjectId | null;   // ref Gateway._id
-  gatewayHardwareId: string | null;            // the actual hardware gatewayId string
-  encryptionKey: string | null; // AES-128 key (hex), API-generated on pairing — select:false
+  nodeId: string;
+  deviceSecret: string;
+  name: string;
+  gatewayId: mongoose.Types.ObjectId | null;
+  gatewayHardwareId: string | null;
+  encryptionKey: string | null;
   pairedAt: Date | null;
   status: IIotNodeStatus;
-  // Pairing token
-  pairingToken: string | null;
-  pairingTokenExpiresAt: Date | null;
 }
 
 const IotNodeStatusSchema = new Schema<IIotNodeStatus>({
-  active:          { type: Boolean, default: false },
-  lastSeenAt:      { type: Date, default: null },
+  active: { type: Boolean, default: false },
+  lastSeenAt: { type: Date, default: null },
   firmwareVersion: { type: String, default: '' },
-  lastRssi:        { type: Number, default: 0 },
-  lastSnr:         { type: Number, default: 0 },
+  lastRssi: { type: Number, default: 0 },
+  lastSnr: { type: Number, default: 0 },
 }, { _id: false });
 
 const IotNodeSchema = new Schema<IIotNode>({
@@ -60,12 +57,10 @@ const IotNodeSchema = new Schema<IIotNode>({
   encryptionKey: {
     type: String,
     default: null,
-    select: false,   // NEVER sent to clients
+    select: false,
   },
-  pairedAt:    { type: Date, default: null },
-  status:      { type: IotNodeStatusSchema, default: () => ({}) },
-  pairingToken:          { type: String, default: null, select: false },
-  pairingTokenExpiresAt: { type: Date,   default: null },
+  pairedAt: { type: Date, default: null },
+  status: { type: IotNodeStatusSchema, default: () => ({}) },
 }, { timestamps: true });
 
 IotNodeSchema.index({ gatewayId: 1 });

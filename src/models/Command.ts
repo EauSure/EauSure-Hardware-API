@@ -1,7 +1,8 @@
 import mongoose, { Document, Schema } from 'mongoose';
 
 export type CommandType =
-  | 'PAIR_NODE'
+  | 'CONFIRM_PAIRING'
+  | 'PAIRING_KEY_READY'
   | 'UNPAIR_NODE'
   | 'SET_CONFIG'
   | 'MEASURE_NOW'
@@ -14,7 +15,7 @@ export type CommandStatus = 'pending' | 'sent' | 'acked' | 'failed' | 'expired';
 export interface ICommand extends Document {
   gatewayId: mongoose.Types.ObjectId;
   gatewayHardwareId: string;
-  nodeId: string | null;        // null for gateway-level commands
+  nodeId: string | null;
   type: CommandType;
   payload: Record<string, any>;
   status: CommandStatus;
@@ -41,8 +42,16 @@ const CommandSchema = new Schema<ICommand>({
   },
   type: {
     type: String,
-    enum: ['PAIR_NODE', 'UNPAIR_NODE', 'SET_CONFIG', 'MEASURE_NOW',
-           'ACTIVATE_NODE', 'DEACTIVATE_NODE', 'HEALTH_CHECK'],
+    enum: [
+      'CONFIRM_PAIRING',
+      'PAIRING_KEY_READY',
+      'UNPAIR_NODE',
+      'SET_CONFIG',
+      'MEASURE_NOW',
+      'ACTIVATE_NODE',
+      'DEACTIVATE_NODE',
+      'HEALTH_CHECK',
+    ],
     required: true,
   },
   payload: {
@@ -55,12 +64,12 @@ const CommandSchema = new Schema<ICommand>({
     default: 'pending',
     index: true,
   },
-  sentAt:   { type: Date, default: null },
-  ackedAt:  { type: Date, default: null },
+  sentAt: { type: Date, default: null },
+  ackedAt: { type: Date, default: null },
   expiresAt: {
     type: Date,
-    default: () => new Date(Date.now() + 5 * 60 * 1000), // 5 min TTL
-    index: { expires: 0 },   // MongoDB TTL index — auto-delete expired docs
+    default: () => new Date(Date.now() + 5 * 60 * 1000),
+    index: { expires: 0 },
   },
 }, {
   timestamps: true,
