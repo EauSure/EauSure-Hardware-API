@@ -12,6 +12,22 @@ import config from '../config';
 
 const router = express.Router();
 
+
+
+function shortToken(token?: string): string {
+  if (!token) return 'none';
+  if (token.length <= 16) return token;
+  return `${token.slice(0, 8)}...${token.slice(-8)}`;
+}
+
+function logStep(route: string, step: string, meta?: Record<string, any>) {
+  const ts = new Date().toISOString();
+  if (meta) {
+    console.log(`[${ts}] [${route}] ${step}`, meta);
+  } else {
+    console.log(`[${ts}] [${route}] ${step}`);
+  }
+}
 // =====================================================
 // POST /api/registry/gateway
 // Called by gateway firmware on first boot.
@@ -233,9 +249,20 @@ router.post(
     body('token').isString().notEmpty(),
   ],
   async (req: Request, res: Response): Promise<void> => {
+    const route = 'Registry/pair-node';
+
     try {
+      logStep(route, 'request received', {
+        gatewayHardwareId: req.body.gatewayHardwareId,
+        nodeId: req.body.nodeId,
+        nodeName: req.body.nodeName,
+        nodeBleMac: req.body.nodeBleMac,
+        tokenPreview: shortToken(req.body.token),
+      });
+
       const errors = validationResult(req);
       if (!errors.isEmpty()) {
+        logStep(route, 'validation failed', { errors: errors.array() });
         res.status(400).json({ success: false, errors: errors.array() });
         return;
       }
@@ -245,20 +272,44 @@ router.post(
       let payload: any;
       try {
         payload = jwt.verify(token, config.jwt.secret) as { id: string };
-      } catch {
+        logStep(route, 'jwt verified', { userId: payload.id });
+      } catch (err: any) {
+        logStep(route, 'jwt verification failed', { error: err?.message || String(err) });
         res.status(401).json({ success: false, message: 'Invalid token' });
         return;
       }
 
+      logStep(route, 'looking up gateway', { gatewayHardwareId });
       const gateway = await Gateway.findOne({ gatewayId: gatewayHardwareId });
-      if (!gateway || !gateway.ownerId || gateway.ownerId.toString() !== payload.id) {
+
+      if (!gateway) {
+        logStep(route, 'gateway not found', { gatewayHardwareId });
         res.status(404).json({ success: false, message: 'Gateway not found for this user' });
         return;
       }
 
+      logStep(route, 'gateway found', {
+        gatewayDbId: gateway._id?.toString(),
+        ownerId: gateway.ownerId?.toString() || null,
+      });
+
+      if (!gateway.ownerId || gateway.ownerId.toString() !== payload.id) {
+        logStep(route, 'gateway ownership mismatch', {
+          gatewayOwnerId: gateway.ownerId?.toString() || null,
+          tokenUserId: payload.id,
+        });
+        res.status(404).json({ success: false, message: 'Gateway not found for this user' });
+        return;
+      }
+
+      logStep(route, 'looking up node', { nodeId });
       let node = await IotNode.findOne({ nodeId });
 
       const aesKey = generateEncryptionKey();
+      logStep(route, 'generated aes key', {
+        nodeExists: !!node,
+        aesKeyPreview: `${aesKey.slice(0, 6)}...${aesKey.slice(-4)}`,
+      });
 
       if (!node) {
         node = new IotNode({
@@ -273,6 +324,7 @@ router.post(
             lastSeenAt: new Date(),
           },
         });
+        logStep(route, 'creating new node document');
       } else {
         node.gatewayId = gateway._id;
         (node as any).gatewayHardwareId = gatewayHardwareId;
@@ -280,9 +332,16 @@ router.post(
         (node as any).bleMac = nodeBleMac || (node as any).bleMac;
         (node as any).encryptionKey = aesKey;
         node.status.lastSeenAt = new Date();
+        logStep(route, 'updating existing node document', {
+          existingNodeId: node._id?.toString(),
+        });
       }
 
       await node.save();
+      logStep(route, 'node saved successfully', {
+        nodeDbId: node._id?.toString(),
+        pairedGatewayHardwareId: gatewayHardwareId,
+      });
 
       res.json({
         success: true,
@@ -294,8 +353,14 @@ router.post(
           nodeName: nodeName || `Node ${nodeId}`,
         },
       });
-    } catch (err) {
-      console.error('[Registry] pair-node error:', err);
+
+      logStep(route, 'response sent', { status: 200, nodeId, gatewayHardwareId });
+    } catch (err: any) {
+      logStep(route, 'unhandled error', {
+        name: err?.name,
+        message: err?.message,
+        stack: err?.stack,
+      });
       res.status(500).json({ success: false, message: 'Pairing failed' });
     }
   }
