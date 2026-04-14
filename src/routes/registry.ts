@@ -2,8 +2,9 @@ import express, { Request, Response } from 'express';
 import { body, validationResult } from 'express-validator';
 import Gateway from '../models/Gateway';
 import IotNode from '../models/IotNode';
+import User from '../models/User';
 import PairingSession from '../models/PairingSession';
-import { authenticateGateway } from '../middleware/auth';
+import { authenticate, authenticateGateway } from '../middleware/auth';
 import {
   buildNodeProof,
   generateEncryptionKey,
@@ -29,6 +30,123 @@ function normalizeSecret(value: unknown): string {
 function hasConfiguredSecret(value: unknown): boolean {
   return normalizeSecret(value).length > 0;
 }
+
+async function requireAdminUser(req: Request, res: Response): Promise<boolean> {
+  const userId = req.user?.id;
+  if (!userId) {
+    res.status(401).json({ success: false, message: 'Access token required' });
+    return false;
+  }
+
+  const user = await User.findById(userId).select('email role');
+  if (!user) {
+    res.status(404).json({ success: false, message: 'Authenticated user not found' });
+    return false;
+  }
+
+  if (user.role !== 'admin') {
+    res.status(403).json({ success: false, message: 'Admin role required' });
+    return false;
+  }
+
+  return true;
+}
+
+router.post(
+  '/admin/pre-register',
+  authenticate,
+  [
+    body('kind').isIn(['gateway', 'node']),
+    body('id').isString().notEmpty(),
+    body('deviceSecret').isString().isLength({ min: 32, max: 256 }),
+    body('name').optional().isString().trim(),
+  ],
+  async (req: Request, res: Response): Promise<void> => {
+    try {
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        res.status(400).json({ success: false, errors: errors.array() });
+        return;
+      }
+
+      if (!(await requireAdminUser(req, res))) {
+        return;
+      }
+
+      const kind = String(req.body.kind).trim().toLowerCase();
+      const id = String(req.body.id).trim().toUpperCase();
+      const deviceSecret = normalizeSecret(req.body.deviceSecret);
+      const providedName = String(req.body.name ?? '').trim();
+
+      if (kind === 'gateway') {
+        let gateway = await Gateway.findOne({ gatewayId: id }).select('+deviceSecret');
+        const displayName = providedName || `Gateway ${id.slice(-6)}`;
+
+        if (!gateway) {
+          gateway = new Gateway({
+            gatewayId: id,
+            deviceSecret,
+            name: displayName,
+            ownerId: null,
+            pairedAt: null,
+            lastSeenAt: null,
+            mqttTopic: `commands/gateway/${id}`,
+          });
+        } else {
+          gateway.deviceSecret = deviceSecret;
+          if (providedName) gateway.name = providedName;
+          if (!gateway.mqttTopic) gateway.mqttTopic = `commands/gateway/${id}`;
+        }
+
+        await gateway.save();
+
+        res.status(201).json({
+          success: true,
+          message: 'Gateway pre-registered',
+          data: {
+            kind,
+            id,
+            name: gateway.name,
+          },
+        });
+        return;
+      }
+
+      let node = await IotNode.findOne({ nodeId: id }).select('+deviceSecret');
+      const displayName = providedName || `Node ${id}`;
+
+      if (!node) {
+        node = new IotNode({
+          nodeId: id,
+          deviceSecret,
+          name: displayName,
+          gatewayId: null,
+          gatewayHardwareId: null,
+          encryptionKey: null,
+          pairedAt: null,
+        });
+      } else {
+        node.deviceSecret = deviceSecret;
+        if (providedName) node.name = providedName;
+      }
+
+      await node.save();
+
+      res.status(201).json({
+        success: true,
+        message: 'IoT node pre-registered',
+        data: {
+          kind,
+          id,
+          name: node.name,
+        },
+      });
+    } catch (err) {
+      console.error('[Registry] admin pre-register error:', err);
+      res.status(500).json({ success: false, message: 'Failed to pre-register device' });
+    }
+  },
+);
 
 router.post(
   '/gateway/heartbeat',
