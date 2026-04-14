@@ -36,8 +36,9 @@ const IotNodeSchema = new Schema<IIotNode>({
   },
   deviceSecret: {
     type: String,
-    required: false,
+    required: true,
     select: false,
+    trim: true,
   },
   name: {
     type: String,

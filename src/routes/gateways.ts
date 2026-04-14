@@ -5,7 +5,7 @@ import Gateway from '../models/Gateway';
 import IotNode from '../models/IotNode';
 import PairingSession from '../models/PairingSession';
 import { authenticate } from '../middleware/auth';
-import { generatePairingSessionToken, pairingSessionExpiresAt } from '../services/pairingService';
+import { deriveNodeApPassword, pairingSessionExpiresAt } from '../services/pairingService';
 import {
   sendCommand,
   buildConfirmPairingPayload,
@@ -36,7 +36,7 @@ router.delete(
       const gateway = await Gateway.findOne({
         _id: req.params.gatewayId,
         ownerId: req.user!.id,
-      });
+      }).select('+deviceSecret');
 
       if (!gateway) {
         res.status(404).json({ success: false, message: 'Gateway not found' });
@@ -107,7 +107,7 @@ router.put(
       const gateway = await Gateway.findOne({
         _id: req.params.gatewayId,
         ownerId: req.user!.id,
-      });
+      }).select('+deviceSecret');
 
       if (!gateway) {
         res.status(404).json({ success: false, message: 'Gateway not found' });
@@ -197,8 +197,24 @@ router.post(
         : `Node ${nodeId}`;
       const bleMac = String(req.body.bleMac).trim().toUpperCase();
 
-      const existingNode = await IotNode.findOne({ nodeId }).select('+encryptionKey');
-      if (existingNode && existingNode.gatewayId && !existingNode.gatewayId.equals(gateway._id as any)) {
+      const existingNode = await IotNode.findOne({ nodeId }).select('+encryptionKey +deviceSecret');
+      if (!existingNode) {
+        res.status(404).json({
+          success: false,
+          message: 'IoT node is not pre-registered. Register nodeId and deviceSecret first.',
+        });
+        return;
+      }
+
+      if (!existingNode.deviceSecret || !existingNode.deviceSecret.trim()) {
+        res.status(409).json({
+          success: false,
+          message: 'IoT node is missing its configured device secret.',
+        });
+        return;
+      }
+
+      if (existingNode.gatewayId && !existingNode.gatewayId.equals(gateway._id as any)) {
         res.status(409).json({ success: false, message: 'IoT node already paired to another gateway' });
         return;
       }
@@ -231,19 +247,18 @@ router.post(
       });
       await session.save();
 
-      const pairingToken = generatePairingSessionToken({
-        sessionId: session.tokenId,
-        userId: req.user!.id,
-        gatewayHardwareId: gateway.gatewayId,
-        nodeId,
-        nodeName,
-        bleMac,
-      });
+      const apPassword = deriveNodeApPassword(nodeId, existingNode.deviceSecret);
 
       const { ok, commandId } = await sendCommand(
         gateway,
         'CONFIRM_PAIRING',
-        buildConfirmPairingPayload({ nodeId, nodeName, bleMac, pairingToken }),
+        buildConfirmPairingPayload({
+          nodeId,
+          nodeName,
+          bleMac,
+          sessionId: session.tokenId,
+          apPassword,
+        }),
         nodeId,
       );
 
@@ -377,7 +392,7 @@ router.put(
       const node = await IotNode.findOne({
         nodeId: req.params.nodeId,
         gatewayId: gateway._id,
-      });
+      }).select('+deviceSecret');
 
       if (!node) {
         res.status(404).json({ success: false, message: 'IoT node not found' });

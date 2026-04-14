@@ -4,7 +4,13 @@ import Gateway from '../models/Gateway';
 import IotNode from '../models/IotNode';
 import PairingSession from '../models/PairingSession';
 import { authenticateGateway } from '../middleware/auth';
-import { verifyPairingSessionToken, generateEncryptionKey } from '../services/pairingService';
+import {
+  buildNodeProof,
+  generateEncryptionKey,
+  generatePairingSessionToken,
+  secureEqualsHex,
+  verifyPairingSessionToken,
+} from '../services/pairingService';
 import {
   ackCommand,
   sendCommand,
@@ -15,6 +21,14 @@ import jwt from 'jsonwebtoken';
 import config from '../config';
 
 const router = express.Router();
+
+function normalizeSecret(value: unknown): string {
+  return String(value ?? '').trim();
+}
+
+function hasConfiguredSecret(value: unknown): boolean {
+  return normalizeSecret(value).length > 0;
+}
 
 router.post(
   '/gateway/heartbeat',
@@ -29,7 +43,7 @@ router.post(
     try {
       const { gatewayHardwareId, rssi, snr } = req.body;
 
-      const gateway = await Gateway.findOne({ gatewayId: gatewayHardwareId });
+      const gateway = await Gateway.findOne({ gatewayId: gatewayHardwareId }).select('+deviceSecret');
       if (!gateway) {
         res.status(404).json({ success: false, message: 'Gateway not found' });
         return;
@@ -135,7 +149,7 @@ router.post(
         return;
       }
 
-      const gateway = await Gateway.findOne({ gatewayId: gatewayHardwareId });
+      const gateway = await Gateway.findOne({ gatewayId: gatewayHardwareId }).select('+deviceSecret');
       if (!gateway) {
         res.status(404).json({ success: false, message: 'Gateway not found' });
         return;
@@ -146,36 +160,37 @@ router.post(
         return;
       }
 
-      let node = await IotNode.findOne({ nodeId }).select('+encryptionKey');
-      if (node && node.gatewayId && !node.gatewayId.equals(gateway._id as any)) {
+      const node = await IotNode.findOne({ nodeId }).select('+encryptionKey +deviceSecret');
+      if (!node) {
+        res.status(404).json({
+          success: false,
+          message: 'IoT node is not pre-registered. Register nodeId and deviceSecret first.',
+        });
+        return;
+      }
+
+      if (!hasConfiguredSecret(node.deviceSecret)) {
+        res.status(409).json({
+          success: false,
+          message: 'IoT node is missing its configured device secret.',
+        });
+        return;
+      }
+
+      if (node.gatewayId && !node.gatewayId.equals(gateway._id as any)) {
         res.status(409).json({ success: false, message: 'IoT node already paired to another gateway' });
         return;
       }
 
       const aesKey = generateEncryptionKey();
 
-      if (!node) {
-        node = new IotNode({
-          nodeId,
-          gatewayId: gateway._id,
-          gatewayHardwareId,
-          name: session.nodeName || `Node ${nodeId}`,
-          encryptionKey: aesKey,
-          pairedAt: new Date(),
-          status: {
-            active: false,
-            lastSeenAt: new Date(),
-          },
-        });
-      } else {
-        node.gatewayId = gateway._id;
-        node.gatewayHardwareId = gatewayHardwareId;
-        node.name = session.nodeName || node.name;
-        node.encryptionKey = aesKey;
-        node.pairedAt = new Date();
-        node.status.lastSeenAt = new Date();
-        node.status.active = false;
-      }
+      node.gatewayId = gateway._id;
+      node.gatewayHardwareId = gatewayHardwareId;
+      node.name = session.nodeName || node.name;
+      node.encryptionKey = aesKey;
+      node.pairedAt = new Date();
+      node.status.lastSeenAt = new Date();
+      node.status.active = false;
 
       await node.save();
 
@@ -208,9 +223,109 @@ router.post(
 );
 
 router.post(
+  '/pair-node/verify-proof',
+  authenticateGateway,
+  [
+    body('gatewayHardwareId').isString().notEmpty(),
+    body('nodeId').isString().notEmpty(),
+    body('sessionId').isString().notEmpty(),
+    body('nonce').isString().isLength({ min: 8, max: 128 }),
+    body('proof').isString().isLength({ min: 32, max: 128 }),
+  ],
+  async (req: Request, res: Response): Promise<void> => {
+    try {
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        res.status(400).json({ success: false, errors: errors.array() });
+        return;
+      }
+
+      const gatewayHardwareId = String(req.body.gatewayHardwareId).trim();
+      const nodeId = String(req.body.nodeId).trim().toUpperCase();
+      const sessionId = String(req.body.sessionId).trim();
+      const nonce = String(req.body.nonce).trim();
+      const proof = String(req.body.proof).trim().toLowerCase();
+
+      const gateway = await Gateway.findOne({ gatewayId: gatewayHardwareId }).select('+deviceSecret');
+      if (!gateway) {
+        res.status(404).json({ success: false, message: 'Gateway not found' });
+        return;
+      }
+
+      const session = await PairingSession.findOne({ tokenId: sessionId });
+      if (!session) {
+        res.status(404).json({ success: false, message: 'Pairing session not found' });
+        return;
+      }
+
+      if (session.status !== 'confirmed') {
+        res.status(409).json({ success: false, message: 'Pairing session is no longer valid' });
+        return;
+      }
+
+      if (session.expiresAt.getTime() <= Date.now()) {
+        session.status = 'expired';
+        await session.save();
+        res.status(410).json({ success: false, message: 'Pairing session expired' });
+        return;
+      }
+
+      if (session.gatewayHardwareId !== gatewayHardwareId || session.nodeId !== nodeId) {
+        res.status(403).json({ success: false, message: 'Pairing session does not match gateway or node' });
+        return;
+      }
+
+      if (!gateway.ownerId || gateway.ownerId.toString() !== session.userId.toString()) {
+        res.status(403).json({ success: false, message: 'Gateway ownership mismatch' });
+        return;
+      }
+
+      const node = await IotNode.findOne({ nodeId }).select('+deviceSecret');
+      if (!node) {
+        res.status(404).json({ success: false, message: 'IoT node not found' });
+        return;
+      }
+
+      if (!hasConfiguredSecret(node.deviceSecret)) {
+        res.status(409).json({ success: false, message: 'IoT node is missing its configured device secret.' });
+        return;
+      }
+
+      const expectedProof = buildNodeProof(node.deviceSecret, nonce, nodeId, gatewayHardwareId);
+      if (!secureEqualsHex(expectedProof, proof)) {
+        res.status(403).json({ success: false, message: 'Node proof verification failed' });
+        return;
+      }
+
+      const pairingToken = generatePairingSessionToken({
+        sessionId: session.tokenId,
+        userId: session.userId.toString(),
+        gatewayHardwareId,
+        nodeId,
+        nodeName: session.nodeName,
+        bleMac: session.bleMac,
+      });
+
+      res.json({
+        success: true,
+        message: 'Node proof verified',
+        data: {
+          pairingToken,
+          expiresAt: session.expiresAt,
+        },
+      });
+    } catch (err) {
+      console.error('[Registry] verify-proof error:', err);
+      res.status(500).json({ success: false, message: 'Failed to verify node proof' });
+    }
+  },
+);
+
+router.post(
   '/gateway/provision',
   [
     body('gatewayHardwareId').isString().notEmpty(),
+    body('deviceSecret').isString().notEmpty(),
     body('firmwareVersion').optional().isString(),
     body('token').isString().notEmpty(),
     body('gatewayName').optional().isString(),
@@ -223,7 +338,11 @@ router.post(
         return;
       }
 
-      const { gatewayHardwareId, firmwareVersion, token, gatewayName } = req.body;
+      const gatewayHardwareId = String(req.body.gatewayHardwareId).trim();
+      const firmwareVersion = req.body.firmwareVersion;
+      const token = String(req.body.token);
+      const gatewayName = req.body.gatewayName;
+      const deviceSecret = normalizeSecret(req.body.deviceSecret);
 
       let payload: any;
       try {
@@ -233,50 +352,54 @@ router.post(
         return;
       }
 
-      let gateway = await Gateway.findOne({ gatewayId: gatewayHardwareId });
-
+      const gateway = await Gateway.findOne({ gatewayId: gatewayHardwareId }).select('+deviceSecret');
       if (!gateway) {
-        gateway = new Gateway({
-          gatewayId: gatewayHardwareId,
-          ownerId: payload.id as any,
-          pairedAt: new Date(),
-          lastSeenAt: new Date(),
-          mqttTopic: `commands/gateway/${gatewayHardwareId}`,
-          status: {
-            online: true,
-            lastHeartbeatAt: new Date(),
-            firmwareVersion: firmwareVersion || '',
-          },
-          name: gatewayName && String(gatewayName).trim()
-            ? String(gatewayName).trim()
-            : `Gateway ${gatewayHardwareId.slice(-6)}`,
+        res.status(404).json({
+          success: false,
+          message: 'Gateway is not pre-registered. Register gatewayId and deviceSecret first.',
         });
-      } else {
-        if (gateway.ownerId && gateway.ownerId.toString() !== payload.id) {
-          res.status(409).json({
-            success: false,
-            message: 'Gateway already linked to another account',
-          });
-          return;
-        }
+        return;
+      }
 
-        gateway.ownerId = payload.id as any;
-        gateway.pairedAt = gateway.pairedAt || new Date();
-        gateway.lastSeenAt = new Date();
-        gateway.status.online = true;
-        gateway.status.lastHeartbeatAt = new Date();
+      if (!hasConfiguredSecret(gateway.deviceSecret)) {
+        res.status(409).json({
+          success: false,
+          message: 'Gateway is missing its configured device secret.',
+        });
+        return;
+      }
 
-        if (firmwareVersion) {
-          gateway.status.firmwareVersion = firmwareVersion;
-        }
+      if (gateway.deviceSecret !== deviceSecret) {
+        res.status(403).json({ success: false, message: 'Gateway device secret mismatch' });
+        return;
+      }
 
-        if (gatewayName && String(gatewayName).trim()) {
-          gateway.name = String(gatewayName).trim();
-        }
+      if (gateway.ownerId && gateway.ownerId.toString() !== payload.id) {
+        res.status(409).json({
+          success: false,
+          message: 'Gateway already linked to another account',
+        });
+        return;
+      }
 
-        if (!gateway.mqttTopic) {
-          gateway.mqttTopic = `commands/gateway/${gateway.gatewayId}`;
-        }
+      gateway.ownerId = payload.id as any;
+      gateway.pairedAt = gateway.pairedAt || new Date();
+      gateway.lastSeenAt = new Date();
+      gateway.status.online = true;
+      gateway.status.lastHeartbeatAt = new Date();
+
+      if (firmwareVersion) {
+        gateway.status.firmwareVersion = firmwareVersion;
+      }
+
+      if (gatewayName && String(gatewayName).trim()) {
+        gateway.name = String(gatewayName).trim();
+      } else if (!gateway.name || !gateway.name.trim()) {
+        gateway.name = `Gateway ${gatewayHardwareId.slice(-6)}`;
+      }
+
+      if (!gateway.mqttTopic) {
+        gateway.mqttTopic = `commands/gateway/${gateway.gatewayId}`;
       }
 
       await gateway.save();
@@ -351,7 +474,7 @@ router.post(
         nodeId,
         gatewayId: gateway._id,
         gatewayHardwareId,
-      }).select('+encryptionKey');
+      }).select('+encryptionKey +deviceSecret');
 
       if (!node) {
         res.json({ success: true, message: 'Nothing to rollback' });
@@ -396,7 +519,7 @@ router.post(
       const node = await IotNode.findOne({
         nodeId,
         gatewayHardwareId: req.body.gatewayHardwareId,
-      });
+      }).select('+deviceSecret');
       if (!node) {
         res.status(404).json({ success: false, message: 'Node not found' });
         return;

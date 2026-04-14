@@ -3,6 +3,7 @@ import jwt from 'jsonwebtoken';
 import config from '../config';
 
 const PAIRING_TOKEN_TTL_SEC = 5 * 60;
+const NODE_AP_PASSWORD_LEN = 12;
 
 export interface PairingSessionTokenClaims {
   type: 'pairing_session';
@@ -59,4 +60,28 @@ export function pairingSessionExpiresAt(): Date {
 
 export function generateEncryptionKey(): string {
   return crypto.randomBytes(16).toString('hex');
+}
+
+export function deriveNodeApPassword(nodeId: string, deviceSecret: string): string {
+  return crypto
+    .createHmac('sha256', deviceSecret)
+    .update(`node-ap:${nodeId}`)
+    .digest('hex')
+    .slice(0, NODE_AP_PASSWORD_LEN);
+}
+
+export function buildNodeProof(deviceSecret: string, nonce: string, nodeId: string, gatewayHardwareId: string): string {
+  return crypto
+    .createHmac('sha256', deviceSecret)
+    .update(`${nonce}|${nodeId}|${gatewayHardwareId}`)
+    .digest('hex');
+}
+
+export function secureEqualsHex(left: string, right: string): boolean {
+  const a = Buffer.from(left, 'hex');
+  const b = Buffer.from(right, 'hex');
+  if (a.length === 0 || b.length === 0 || a.length !== b.length) {
+    return false;
+  }
+  return crypto.timingSafeEqual(a, b);
 }

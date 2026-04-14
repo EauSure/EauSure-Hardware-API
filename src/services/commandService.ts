@@ -52,13 +52,15 @@ export function buildConfirmPairingPayload(input: {
   nodeId: string;
   nodeName: string;
   bleMac: string;
-  pairingToken: string;
+  sessionId: string;
+  apPassword: string;
 }): Record<string, any> {
   return {
     nodeId: input.nodeId,
     nodeName: input.nodeName,
     bleMac: input.bleMac,
-    pairingToken: input.pairingToken,
+    sessionId: input.sessionId,
+    apPassword: input.apPassword,
   };
 }
 

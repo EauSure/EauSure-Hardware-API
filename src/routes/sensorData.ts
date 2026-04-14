@@ -34,13 +34,13 @@ router.post(
       const { nodeId, gatewayHardwareId } = payload;
 
       // Resolve gateway and owner from hardware IDs
-      const gateway = await Gateway.findOne({ gatewayId: gatewayHardwareId });
+      const gateway = await Gateway.findOne({ gatewayId: gatewayHardwareId }).select('+deviceSecret');
       if (!gateway || !gateway.ownerId) {
         res.status(404).json({ success: false, message: 'Gateway not registered or not paired to any account' });
         return;
       }
 
-      const node = await IotNode.findOne({ nodeId, gatewayId: gateway._id });
+      const node = await IotNode.findOne({ nodeId, gatewayId: gateway._id }).select('+deviceSecret');
       if (!node) {
         res.status(404).json({ success: false, message: 'IoT node not paired to this gateway' });
         return;

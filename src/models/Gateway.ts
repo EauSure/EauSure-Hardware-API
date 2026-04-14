@@ -53,9 +53,9 @@ const GatewaySchema = new Schema<IGateway>({
   },
   deviceSecret: {
     type: String,
-    required: false,
+    required: true,
     select: false,
-    default: null,
+    trim: true,
   },
   name: {
     type: String,
