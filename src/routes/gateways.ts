@@ -270,6 +270,7 @@ router.post(
           nodeName,
           bleMac,
           sessionId: session.tokenId,
+          apPassword,
           commandId,
           mqttPublished: ok,
           expiresAt: session.expiresAt,
