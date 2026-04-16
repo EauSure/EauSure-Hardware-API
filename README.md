@@ -25,7 +25,7 @@ This service receives telemetry from the gateway, stores it in MongoDB, publishe
        | /prove                   |         |<-----------------------+        |
        | /provision               |                                           |
        |                          | telemetry/Status transmission             |
-       |                          +------------------------------------------>|
+       |During Pairing Phase Only +------------------------------------------>|
        +--------------------------+------------------------------------------>|
                                                                               |
                                       +---------------------------------------+
