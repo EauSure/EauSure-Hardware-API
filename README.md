@@ -41,7 +41,7 @@ This service receives telemetry from the gateway, stores it in MongoDB, publishe
 ```text
 Provisioning / Pairing
 ----------------------
-Admin/Web App -> API: pre-register gateway and node
+Admin Web/App -> API: pre-register gateway and node
 Gateway -> API: provision gateway to user account
 Gateway -> API: confirm candidate / verify node proof
 Node -> API: finalize pair-node
