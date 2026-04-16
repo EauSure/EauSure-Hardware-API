@@ -4,6 +4,56 @@ Backend API for the water quality monitoring platform.
 
 This service receives telemetry from the gateway, stores it in MongoDB, publishes live updates over MQTT, and manages gateway and IoT node registration, provisioning, pairing, and command delivery.
 
+## High-Level Flow
+
+```text
+                           +----------------------+
+                           |   Web / Mobile App   |
+                           |  JWT-authenticated   |
+                           +----------+-----------+
+                                      |
+                                      | manage gateways, nodes,
+                                      | confirm pairing
+                                      v
++-------------+               +-------+--------+               +------------------+
+|  IoT Node   |<-- LoRa --->  |      Gateway   | <-- HTTPS --> |       API        |
+|  ESP32-S3   |               |      ESP32     |               |  Express + TS    |
++------+------+               +---+---------+--+               +----+--------+----+
+       |                          |         |                        |        |
+       | local AP during pairing  |         | MQTT commands/events  |        |
+       | /identity                |         +----------------------->|        |
+       | /prove                   |                                  |        |
+       | /provision               |<---------------------------------+        |
+       |                          |                                           |
+       |                          | telemetry writes                           |
+       |                          +------------------------------------------->|
+       |                                                                      |
+       |                    +-------------------+         +-------------------+
+       +------------------> |      MongoDB      |         |    MQTT Broker    |
+                            | telemetry, nodes, |         | live data + cmds  |
+                            | gateways, pairing |         +-------------------+
+                            | sessions, command |
+                            +-------------------+
+```
+
+```text
+Provisioning / Pairing
+----------------------
+Admin/Web App -> API: pre-register gateway and node
+Gateway -> API: provision gateway to user account
+Gateway -> API: confirm candidate / verify node proof
+Node -> API: finalize pair-node
+API -> Gateway: publish PAIRING_KEY_READY
+
+Runtime
+-------
+Gateway -> Node: ACTIVATE / HEARTBEAT_REQ / MEASURE_REQ
+Node -> Gateway: encrypted DATA / HEARTBEAT_ACK / ACTIVATE_OK
+Gateway -> API: POST /api/sensor-data
+API -> MongoDB: persist reading
+API -> MQTT: publish live update
+```
+
 ## What This API Does
 
 - accepts sensor data from the gateway over HTTP
