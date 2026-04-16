@@ -16,20 +16,22 @@ This service receives telemetry from the gateway, stores it in MongoDB, publishe
                                       | confirm pairing
                                       v
 +-------------+               +-------+--------+               +------------------+
-|  IoT Node   |<-- LoRa --->  |      Gateway   | <-- HTTPS --> |       API        |
-|  ESP32-S3   |               |      ESP32     |               |  Express + TS    |
+|  IoT Node   | <-- LoRa ---> |      Gateway   | <-- HTTPS --> |       API        |
+|  ESP32-S3   | <- Wifi AP -> |      ESP32     |               |  Express + TS    |
 +------+------+               +---+---------+--+               +----+--------+----+
        |                          |         |                        |        |
-       | local AP during pairing  |         | MQTT commands/events  |        |
+       | local AP during pairing  |         | MQTT commands/events   |        |
        | /identity                |         +----------------------->|        |
-       | /prove                   |                                  |        |
-       | /provision               |<---------------------------------+        |
-       |                          |                                           |
-       |                          | telemetry writes                           |
-       |                          +------------------------------------------->|
-       |                                                                      |
-       |                    +-------------------+         +-------------------+
-       +------------------> |      MongoDB      |         |    MQTT Broker    |
+       | /prove                   |         |<-----------------------+        |
+       | /provision               |                                           |
+       |                          | telemetry/Status transmission             |
+       |                          +------------------------------------------>|
+       +--------------------------+------------------------------------------>|
+                                                                              |
+                                      ----------------------------------------+
+                                      |                             |                        V                             V      
+                            +-------------------+         +-------------------+
+                            |      MongoDB      |         |    MQTT Broker    |
                             | telemetry, nodes, |         | live data + cmds  |
                             | gateways, pairing |         +-------------------+
                             | sessions, command |
