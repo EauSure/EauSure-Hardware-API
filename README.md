@@ -1,169 +1,134 @@
 # Water Quality Monitor API
 
-Secure RESTful API for IoT Water Quality Monitoring System with FreeRTOS, ESP32, JWT authentication, and AES-GCM encryption.
+Backend API for the water quality monitoring platform.
 
-## Architecture
+This service receives telemetry from the gateway, stores it in MongoDB, publishes live updates over MQTT, and manages gateway and IoT node registration, provisioning, pairing, and command delivery.
 
-```
-┌─────────────┐     WiFi HTTP POST       ┌─────────────┐
-│   Gateway   │ ───────────────────────> │     API     │
-│   (ESP32)   │  (Encrypted JSON + Key)  │  (Node.js)  │
-└─────────────┘                          └──────┬──────┘
-                                                │
-                                         ┌──────┴──────┐
-                                         │             │
-                                    ┌────▼────┐    ┌───▼────┐
-                                    │ MongoDB │    │  MQTT  │
-                                    │Database │    │Broker  │
-                                    └─────────┘    └───┬────┘
-                                                       │
-                                              ┌────────┴─────────┐
-                                              │                  │
-                                         ┌────▼────┐      ┌─────▼─────┐
-                                         │Web App  │      │Mobile App │
-                                         │(React)  │      │  (React   │
-                                         │         │      │   Native) │
-                                         └─────────┘      └───────────┘
-```
+## What This API Does
 
-## Features
+- accepts sensor data from the gateway over HTTP
+- stores telemetry, signal data, and event data in MongoDB
+- publishes live telemetry to MQTT for dashboards and clients
+- provisions gateways to user accounts
+- manages node pairing sessions and pairing key exchange
+- exposes authenticated routes for gateway and node management
 
-### Security
-✅ JWT-based authentication for users  
-✅ API key authentication for Gateway  
-✅ AES-128-GCM encryption matching Gateway/IoT Node  
-✅ Rate limiting to prevent abuse  
-✅ Helmet.js security headers  
-✅ CORS configuration  
+## Tech Stack
 
-### Real-time Data
-✅ HTTP POST endpoint for Gateway data submission  
-✅ MQTT broadcasting for real-time updates  
-✅ WebSocket support (optional)  
+- Node.js + Express
+- TypeScript
+- MongoDB + Mongoose
+- MQTT
+- JWT-based user authentication
+- API key authentication for gateway firmware
 
-### Data Management
-✅ MongoDB storage with indexes  
-✅ Pagination and filtering  
-✅ Statistics and aggregations  
-✅ Event tracking (shake, battery, alerts)  
+## Project Structure
 
-### API Endpoints
-✅ Authentication (register, login, refresh)  
-✅ Sensor data CRUD operations  
-✅ Real-time latest readings  
-✅ Historical data with filters  
-✅ Statistics and analytics  
+| Path | Purpose |
+|------|---------|
+| `src/index.ts` | Express app, middleware, health check, route mounting |
+| `src/config.ts` | Environment configuration |
+| `src/routes/sensorData.ts` | Telemetry ingestion and telemetry queries |
+| `src/routes/gateways.ts` | User-facing gateway and node management routes |
+| `src/routes/registry.ts` | Gateway provisioning, node pairing, admin pre-registration, command ack/heartbeat |
+| `src/services/database.ts` | MongoDB connection |
+| `src/services/mqttService.ts` | MQTT publishing |
+| `src/services/commandService.ts` | Command persistence and MQTT command publishing |
+| `src/services/pairingService.ts` | Pairing token, AP password, proof, and AES key helpers |
+| `src/models/` | MongoDB schemas for users, gateways, nodes, telemetry, commands, and pairing sessions |
+| `api/index.ts` | Vercel entry point |
+| `test_api.ps1` | Local PowerShell API test script |
 
-## Installation
+## Authentication Model
 
-### Prerequisites
-- Node.js >= 18.0.0
-- MongoDB (local or Atlas)
-- MQTT Broker (optional, for real-time broadcasting)
+This repository does not provide user login or registration routes.
 
-### Setup
+Instead:
 
-1. **Clone and navigate**
-   ```bash
-   cd API
-   ```
+- user-facing routes expect a valid JWT in `Authorization: Bearer <token>`
+- the JWT secret must match the external auth service that issued the token
+- firmware-facing routes use `X-Gateway-Key` or `X-API-Key`
 
-2. **Install dependencies**
-   ```bash
-   npm install
-   ```
+## Main Flows
 
-3. **Configure environment**
-   ```bash
-   cp .env.example .env
-   # Edit .env with your configuration
-   ```
+### Gateway provisioning
 
-4. **Build TypeScript**
-   ```bash
-   npm run build
-   ```
+1. An admin pre-registers the gateway hardware ID and device secret.
+2. The gateway sends `POST /api/registry/gateway/provision` with its hardware ID, device secret, firmware version, and user token.
+3. The API links the gateway to the user account and returns the MQTT command topic.
 
-5. **Start development server**
-   ```bash
-   npm run dev
-   ```
+### Node pairing
 
-## Environment Variables
+1. An admin pre-registers the node ID and device secret.
+2. The mobile/web app confirms a detected pairing candidate through `POST /api/gateways/:gatewayId/pairing/confirm-candidate`.
+3. The API creates a pairing session and publishes `CONFIRM_PAIRING` over MQTT to the gateway.
+4. The gateway fetches and verifies node proof through `POST /api/registry/pair-node/verify-proof`.
+5. The node completes pairing through `POST /api/registry/pair-node`.
+6. The API generates and stores the AES key, then publishes `PAIRING_KEY_READY` to the gateway.
 
-See `.env.example` for all available options. **Critical variables:**
+### Telemetry ingestion
 
-```env
-# Security (CHANGE IN PRODUCTION!)
-JWT_SECRET=your-super-secret-jwt-key
-GATEWAY_API_KEY=your-gateway-secret-key
-ENCRYPTION_KEY=1f3831dd81f09f0902d4694ada13fd06  # Match Gateway config.h
+1. The gateway sends `POST /api/sensor-data`.
+2. The API resolves the gateway and paired node from the database.
+3. The reading is stored in `SensorData`.
+4. A live MQTT event is published for dashboards and clients.
 
-# Database
-MONGODB_URI=mongodb://localhost:27017/water-quality-monitor
+## Route Summary
 
-# MQTT (optional, for real-time)
-MQTT_BROKER_URL=mqtt://broker.hivemq.com
-```
+### Public utility
 
-## API Endpoints
+| Method | Path | Notes |
+|------|------|------|
+| `GET` | `/health` | Health check with MQTT connection status |
 
-### Authentication
+### Telemetry
 
-#### Register User
-```http
-POST /api/auth/register
-Content-Type: application/json
+| Method | Path | Auth | Notes |
+|------|------|------|------|
+| `POST` | `/api/sensor-data` | Gateway API key | Receive telemetry from gateway |
+| `GET` | `/api/sensor-data` | JWT | Paginated telemetry for authenticated user |
+| `GET` | `/api/sensor-data/latest` | JWT | Latest reading |
+| `GET` | `/api/sensor-data/stats` | JWT | Aggregated stats for a time window |
 
-{
-  "email": "user@example.com",
-  "password": "secure-password",
-  "name": "John Doe"
-}
-```
+### Gateways and nodes
 
-#### Login
-```http
-POST /api/auth/login
-Content-Type: application/json
+| Method | Path | Auth | Notes |
+|------|------|------|------|
+| `GET` | `/api/gateways` | JWT | List gateways for current user |
+| `DELETE` | `/api/gateways/:gatewayId` | JWT | Unlink gateway from current user |
+| `GET` | `/api/gateways/:gatewayId/status` | JWT | Gateway status |
+| `PUT` | `/api/gateways/:gatewayId/config` | JWT | Update gateway config and publish command |
+| `GET` | `/api/gateways/:gatewayId/nodes` | JWT | List nodes attached to a gateway |
+| `POST` | `/api/gateways/:gatewayId/pairing/confirm-candidate` | JWT | Confirm a discovered node candidate |
+| `DELETE` | `/api/gateways/:gatewayId/nodes/:nodeId` | JWT | Unpair node |
+| `POST` | `/api/gateways/:gatewayId/nodes/:nodeId/measure` | JWT | Request immediate measurement |
+| `PUT` | `/api/gateways/:gatewayId/nodes/:nodeId/config` | JWT | Send node config update |
 
-{
-  "email": "user@example.com",
-  "password": "secure-password"
-}
-```
+### Registry and firmware integration
 
-Response:
-```json
-{
-  "success": true,
-  "data": {
-    "user": { "id": "...", "email": "...", "role": "user" },
-    "accessToken": "eyJhbGc...",
-    "refreshToken": "eyJhbGc..."
-  }
-}
-```
+| Method | Path | Auth | Notes |
+|------|------|------|------|
+| `POST` | `/api/registry/admin/pre-register` | JWT admin | Pre-register gateway or node with device secret |
+| `POST` | `/api/registry/gateway/provision` | Token + device secret | Link gateway to user account |
+| `POST` | `/api/registry/gateway/heartbeat` | Gateway API key | Update gateway status and fetch pending commands |
+| `POST` | `/api/registry/command/ack` | Gateway API key | Ack a command |
+| `POST` | `/api/registry/pair-node/verify-proof` | Gateway API key | Verify node proof and issue pairing token |
+| `POST` | `/api/registry/pair-node` | Pairing token | Finalize node pairing and generate AES key |
+| `POST` | `/api/registry/pair-node/rollback` | Gateway API key | Roll back a failed pairing |
+| `POST` | `/api/registry/gateway/node-status` | Gateway API key | Update node active/signal status |
 
-#### Refresh Token
-```http
-POST /api/auth/refresh
-Content-Type: application/json
+## Example Telemetry Request
 
-{
-  "refreshToken": "eyJhbGc..."
-}
-```
-
-### Sensor Data
-
-#### Submit Data from Gateway
 ```http
 POST /api/sensor-data
-X-Gateway-Key: your-gateway-secret-key
+X-Gateway-Key: your-gateway-api-key
 Content-Type: application/json
+```
 
+```json
 {
+  "nodeId": "12345678",
+  "gatewayHardwareId": "A1B2C3D4E5F6",
   "seq": 42,
   "b": 85,
   "v": 3.9,
@@ -183,176 +148,66 @@ Content-Type: application/json
 }
 ```
 
-#### Get Sensor Data (Authenticated)
-```http
-GET /api/sensor-data?page=1&limit=20&startDate=2026-01-01
-Authorization: Bearer <accessToken>
+## Environment Variables
+
+Copy `.env.example` to `.env` and update the values.
+
+Important variables:
+
+```env
+NODE_ENV=development
+PORT=3000
+API_BASE_URL=http://localhost:3000
+
+JWT_SECRET=your-shared-jwt-secret
+MONGODB_URI=mongodb://localhost:27017/water-quality-monitor
+GATEWAY_API_KEY=your-gateway-api-key
+
+MQTT_BROKER_URL=mqtt://broker.hivemq.com
+MQTT_PORT=1883
+MQTT_CLIENT_ID=water-quality-api-broadcaster
+MQTT_PUBLISH_TOPIC=water-quality/live-data
 ```
 
-Query parameters:
-- `page`: Page number (default: 1)
-- `limit`: Items per page (default: 20, max: 100)
-- `deviceId`: Filter by device
-- `startDate`: ISO 8601 date
-- `endDate`: ISO 8601 date
-- `eventType`: Filter by event (ALARM_SHAKE, None, etc.)
+Notes:
 
-#### Get Latest Reading
-```http
-GET /api/sensor-data/latest
-Authorization: Bearer <accessToken>
+- `JWT_SECRET` must match the external auth service issuing user tokens.
+- `GATEWAY_API_KEY` must match the value used by gateway firmware.
+- MQTT is optional for live updates, but the API is built around publishing commands and telemetry events when available.
+
+## Local Development
+
+```bash
+cd API
+npm install
+npm run dev
 ```
 
-#### Get Statistics
-```http
-GET /api/sensor-data/stats?hours=24
-Authorization: Bearer <accessToken>
-```
+Useful commands:
 
-### Health Check
-```http
-GET /health
+```bash
+npm run type-check
+npm run build
+npm start
 ```
 
 ## Deployment
 
-### Vercel Deployment
+This project includes `api/index.ts` for Vercel deployment and `vercel.json` for routing.
 
-1. **Install Vercel CLI**
-   ```bash
-   npm install -g vercel
-   ```
-
-2. **Login**
-   ```bash
-   vercel login
-   ```
-
-3. **Deploy**
-   ```bash
-   npm run build
-   vercel --prod
-   ```
-
-4. **Set environment variables**
-   ```bash
-   vercel env add JWT_SECRET
-   vercel env add GATEWAY_API_KEY
-   vercel env add MONGODB_URI
-   vercel env add ENCRYPTION_KEY
-   ```
-
-### Environment Variables on Vercel
-
-Go to your Vercel project → Settings → Environment Variables and add:
+Set these environment variables in the deployment platform:
 
 - `JWT_SECRET`
-- `JWT_REFRESH_SECRET`
+- `MONGODB_URI`
 - `GATEWAY_API_KEY`
-- `MONGODB_URI` (use MongoDB Atlas)
-- `ENCRYPTION_KEY`
-- `MQTT_BROKER_URL` (optional)
+- `API_BASE_URL`
+- `MQTT_BROKER_URL`
+- `MQTT_PORT`
+- `MQTT_USERNAME` and `MQTT_PASSWORD` if your broker requires them
 
-## Gateway Integration
+## Notes
 
-Update Gateway code to send data via WiFi:
-
-```cpp
-#include <WiFi.h>
-#include <HTTPClient.h>
-#include <ArduinoJson.h>
-
-const char* ssid = "YOUR_WIFI_SSID";
-const char* password = "YOUR_WIFI_PASSWORD";
-const char* apiUrl = "https://your-api.vercel.app/api/sensor-data";
-const char* apiKey = "your-gateway-secret-key";
-
-void sendToAPI(JsonDocument& doc) {
-  if (WiFi.status() == WL_CONNECTED) {
-    HTTPClient http;
-    http.begin(apiUrl);
-    http.addHeader("Content-Type", "application/json");
-    http.addHeader("X-Gateway-Key", apiKey);
-    
-    String jsonString;
-    serializeJson(doc, jsonString);
-    
-    int httpCode = http.POST(jsonString);
-    
-    if (httpCode == 201) {
-      Serial.println("[API] Data sent successfully");
-    } else {
-      Serial.printf("[API] Error: %d\n", httpCode);
-    }
-    
-    http.end();
-  }
-}
-```
-
-## MQTT Real-time Updates
-
-Subscribe to live data:
-
-```javascript
-import mqtt from 'mqtt';
-
-const client = mqtt.connect('mqtt://broker.hivemq.com');
-
-client.on('connect', () => {
-  client.subscribe('water-quality/live-data');
-});
-
-client.on('message', (topic, message) => {
-  const data = JSON.parse(message.toString());
-  console.log('New sensor data:', data);
-});
-```
-
-## Security Best Practices
-
-1. **Never commit `.env` file**
-2. **Use strong JWT secrets** (32+ random characters)
-3. **Use unique Gateway API key**
-4. **Enable HTTPS** in production
-5. **Use MongoDB Atlas** with IP whitelist
-6. **Rotate secrets** regularly
-7. **Enable rate limiting** (configured by default)
-
-## Development
-
-```bash
-# Run in development mode with hot reload
-npm run dev
-
-# Type check
-npm run type-check
-
-# Build for production
-npm run build
-
-# Start production server
-npm start
-```
-
-## Troubleshooting
-
-### MongoDB Connection Issues
-- Check `MONGODB_URI` format
-- For Atlas: whitelist IP address (0.0.0.0/0 for all IPs)
-- Verify network connectivity
-
-### MQTT Not Working
-- MQTT is optional for real-time broadcasting
-- API works without MQTT connection
-- Check broker URL and credentials
-
-### Gateway Cannot Connect
-- Verify `GATEWAY_API_KEY` matches on both sides
-- Check API URL is accessible from Gateway network
-- Enable CORS for Gateway IP if needed
-
-
-## Support
-
-For issues and questions, check the main project README.
+- Commands are stored in MongoDB and also published over MQTT.
+- Pairing sessions and commands use TTL-backed expiration in MongoDB.
+- The API expects gateways and nodes to be pre-registered before provisioning and pairing.
+- `test_api.ps1` can be used to exercise the local API manually.
