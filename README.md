@@ -89,7 +89,6 @@ API -> MQTT: publish live update
 | `src/services/pairingService.ts` | Pairing token, AP password, proof, and AES key helpers |
 | `src/models/` | MongoDB schemas for users, gateways, nodes, telemetry, commands, and pairing sessions |
 | `api/index.ts` | Vercel entry point |
-| `test_api.ps1` | Local PowerShell API test script |
 
 ## Authentication Model
 
@@ -227,22 +226,6 @@ Notes:
 - `GATEWAY_API_KEY` must match the value used by gateway firmware.
 - MQTT is optional for live updates, but the API is built around publishing commands and telemetry events when available.
 
-## Local Development
-
-```bash
-cd API
-npm install
-npm run dev
-```
-
-Useful commands:
-
-```bash
-npm run type-check
-npm run build
-npm start
-```
-
 ## Deployment
 
 This project includes `api/index.ts` for Vercel deployment and `vercel.json` for routing.
@@ -262,4 +245,9 @@ Set these environment variables in the deployment platform:
 - Commands are stored in MongoDB and also published over MQTT.
 - Pairing sessions and commands use TTL-backed expiration in MongoDB.
 - The API expects gateways and nodes to be pre-registered before provisioning and pairing.
-- `test_api.ps1` can be used to exercise the local API manually.
+
+## License
+
+This project is currently marked as `UNLICENSED`.
+
+This repository is private and is not currently released under an open-source license.
