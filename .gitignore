@@ -43,4 +43,3 @@ coverage/
 tmp/
 temp/
 *.tmp
-test_api.ps1
