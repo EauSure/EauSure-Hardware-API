@@ -14,6 +14,7 @@ import gatewayRoutes    from './routes/gateways';
 import registryRoutes   from './routes/registry';
 
 const app: Application = express();
+app.set('trust proxy', 1);
 
 // =====================================================
 // Middleware
