@@ -6,7 +6,7 @@ import Gateway from '../models/Gateway';
 import IotNode from '../models/IotNode';
 import PairingSession from '../models/PairingSession';
 import { authenticate } from '../middleware/auth';
-import { isDatabaseReady } from '../services/database';
+import { ensureDatabaseReady } from '../services/database';
 import {
   deriveGatewayProvisioningSession,
   deriveNodeApPassword,
@@ -106,7 +106,8 @@ router.put(
   ],
   async (req: Request, res: Response): Promise<void> => {
     try {
-      if (!isDatabaseReady()) {
+      const dbReady = await ensureDatabaseReady();
+      if (!dbReady) {
         res.status(503).json({
           success: false,
           message: 'Database unavailable. Retry provisioning in a few seconds.',
