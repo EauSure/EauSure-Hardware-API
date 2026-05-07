@@ -3,6 +3,7 @@ import jwt from 'jsonwebtoken';
 import config from '../config';
 
 const PAIRING_TOKEN_TTL_SEC = 5 * 60;
+const GATEWAY_PROVISIONING_TOKEN_TTL_SEC = 5 * 60;
 const NODE_AP_PASSWORD_LEN = 12;
 
 export interface PairingSessionTokenClaims {
@@ -22,6 +23,7 @@ export interface GatewayProvisioningTokenClaims {
   jti: string;
   id: string;
   gatewayHardwareId: string;
+  challenge?: string;
   iat?: number;
   exp?: number;
 }
@@ -75,6 +77,54 @@ export function verifyGatewayProvisioningToken(token: string): GatewayProvisioni
   }
 
   return decoded;
+}
+
+export function generateGatewayProvisioningToken(input: {
+  sessionId: string;
+  userId: string;
+  gatewayHardwareId: string;
+  challenge: string;
+}): string {
+  const payload: GatewayProvisioningTokenClaims = {
+    type: 'gateway_provisioning',
+    jti: input.sessionId,
+    id: input.userId,
+    gatewayHardwareId: input.gatewayHardwareId,
+    challenge: input.challenge,
+  };
+
+  return jwt.sign(payload, config.jwt.secret, {
+    expiresIn: GATEWAY_PROVISIONING_TOKEN_TTL_SEC,
+  });
+}
+
+export function gatewayProvisioningExpiresAt(): Date {
+  return new Date(Date.now() + GATEWAY_PROVISIONING_TOKEN_TTL_SEC * 1000);
+}
+
+export function deriveGatewayProvisioningSession(input: {
+  deviceSecret: string;
+  gatewayHardwareId: string;
+  challenge: string;
+  sessionId: string;
+}) {
+  const encKeyHex = crypto
+    .createHmac('sha256', input.deviceSecret)
+    .update(`gwprov:v2|enc|${input.gatewayHardwareId}|${input.challenge}|${input.sessionId}`)
+    .digest('hex')
+    .slice(0, 32);
+
+  const macKeyHex = crypto
+    .createHmac('sha256', input.deviceSecret)
+    .update(`gwprov:v2|mac|${input.gatewayHardwareId}|${input.challenge}|${input.sessionId}`)
+    .digest('hex');
+
+  const serverProof = crypto
+    .createHmac('sha256', input.deviceSecret)
+    .update(`gwprov:v2|proof|${input.gatewayHardwareId}|${input.challenge}|${input.sessionId}`)
+    .digest('hex');
+
+  return { encKeyHex, macKeyHex, serverProof };
 }
 
 export function pairingSessionExpiresAt(): Date {

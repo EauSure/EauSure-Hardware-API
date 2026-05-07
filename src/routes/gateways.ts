@@ -1,11 +1,18 @@
 import express, { Request, Response } from 'express';
 import { body, param, validationResult } from 'express-validator';
 import mongoose from 'mongoose';
+import crypto from 'crypto';
 import Gateway from '../models/Gateway';
 import IotNode from '../models/IotNode';
 import PairingSession from '../models/PairingSession';
 import { authenticate } from '../middleware/auth';
-import { deriveNodeApPassword, pairingSessionExpiresAt } from '../services/pairingService';
+import {
+  deriveGatewayProvisioningSession,
+  deriveNodeApPassword,
+  gatewayProvisioningExpiresAt,
+  generateGatewayProvisioningToken,
+  pairingSessionExpiresAt,
+} from '../services/pairingService';
 import {
   sendCommand,
   buildConfirmPairingPayload,
@@ -164,6 +171,82 @@ router.get('/:gatewayId/nodes', async (req: Request, res: Response): Promise<voi
     res.status(500).json({ success: false, message: 'Failed to fetch nodes' });
   }
 });
+
+router.post(
+  '/provisioning/session',
+  [
+    body('gatewayHardwareId').isString().notEmpty(),
+    body('challenge').isString().isLength({ min: 8, max: 128 }),
+  ],
+  async (req: Request, res: Response): Promise<void> => {
+    try {
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        res.status(400).json({ success: false, errors: errors.array() });
+        return;
+      }
+
+      const gatewayHardwareId = String(req.body.gatewayHardwareId).trim().toUpperCase();
+      const challenge = String(req.body.challenge).trim();
+
+      const gateway = await Gateway.findOne({ gatewayId: gatewayHardwareId }).select('+deviceSecret');
+      if (!gateway) {
+        res.status(404).json({
+          success: false,
+          message: 'Gateway is not pre-registered. Register gatewayId and deviceSecret first.',
+        });
+        return;
+      }
+
+      if (!gateway.deviceSecret || !gateway.deviceSecret.trim()) {
+        res.status(409).json({
+          success: false,
+          message: 'Gateway is missing its configured device secret.',
+        });
+        return;
+      }
+
+      if (gateway.ownerId && gateway.ownerId.toString() !== req.user!.id) {
+        res.status(409).json({
+          success: false,
+          message: 'Gateway already linked to another account',
+        });
+        return;
+      }
+
+      const sessionId = crypto.randomUUID();
+      const { encKeyHex, macKeyHex, serverProof } = deriveGatewayProvisioningSession({
+        deviceSecret: gateway.deviceSecret,
+        gatewayHardwareId,
+        challenge,
+        sessionId,
+      });
+      const provisioningToken = generateGatewayProvisioningToken({
+        sessionId,
+        userId: req.user!.id,
+        gatewayHardwareId,
+        challenge,
+      });
+
+      res.status(201).json({
+        success: true,
+        data: {
+          gatewayHardwareId,
+          challenge,
+          sessionId,
+          provisioningToken,
+          encKeyHex,
+          macKeyHex,
+          serverProof,
+          expiresAt: gatewayProvisioningExpiresAt(),
+        },
+      });
+    } catch (err) {
+      console.error('[Gateways] provisioning session error:', err);
+      res.status(500).json({ success: false, message: 'Failed to create provisioning session' });
+    }
+  },
+);
 
 router.post(
   '/:gatewayId/pairing/confirm-candidate',
