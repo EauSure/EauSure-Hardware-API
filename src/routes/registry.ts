@@ -10,6 +10,7 @@ import {
   generateEncryptionKey,
   generatePairingSessionToken,
   secureEqualsHex,
+  verifyGatewayProvisioningToken,
   verifyPairingSessionToken,
 } from '../services/pairingService';
 import {
@@ -462,11 +463,26 @@ router.post(
       const gatewayName = req.body.gatewayName;
       const deviceSecret = normalizeSecret(req.body.deviceSecret);
 
-      let payload: any;
+      let userId = '';
       try {
-        payload = jwt.verify(token, config.jwt.secret) as { id: string };
+        const provisioningClaims = verifyGatewayProvisioningToken(token);
+        if (provisioningClaims.gatewayHardwareId !== gatewayHardwareId) {
+          res.status(403).json({ success: false, message: 'Provisioning token does not match gateway hardware ID' });
+          return;
+        }
+        userId = provisioningClaims.id;
       } catch {
-        res.status(401).json({ success: false, message: 'Invalid token' });
+        try {
+          const payload = jwt.verify(token, config.jwt.secret) as { id: string };
+          userId = String(payload.id || '');
+        } catch {
+          res.status(401).json({ success: false, message: 'Invalid token' });
+          return;
+        }
+      }
+
+      if (!userId) {
+        res.status(401).json({ success: false, message: 'Invalid token payload' });
         return;
       }
 
@@ -492,7 +508,7 @@ router.post(
         return;
       }
 
-      if (gateway.ownerId && gateway.ownerId.toString() !== payload.id) {
+      if (gateway.ownerId && gateway.ownerId.toString() !== userId) {
         res.status(409).json({
           success: false,
           message: 'Gateway already linked to another account',
@@ -500,7 +516,7 @@ router.post(
         return;
       }
 
-      gateway.ownerId = payload.id as any;
+      gateway.ownerId = userId as any;
       gateway.pairedAt = gateway.pairedAt || new Date();
       gateway.lastSeenAt = new Date();
       gateway.status.online = true;

@@ -17,6 +17,15 @@ export interface PairingSessionTokenClaims {
   exp?: number;
 }
 
+export interface GatewayProvisioningTokenClaims {
+  type: 'gateway_provisioning';
+  jti: string;
+  id: string;
+  gatewayHardwareId: string;
+  iat?: number;
+  exp?: number;
+}
+
 export function generatePairingSessionToken(input: {
   sessionId: string;
   userId: string;
@@ -49,6 +58,20 @@ export function verifyPairingSessionToken(token: string): PairingSessionTokenCla
 
   if (!decoded.jti || !decoded.userId || !decoded.gatewayHardwareId || !decoded.nodeId) {
     throw new Error('Pairing token missing required fields');
+  }
+
+  return decoded;
+}
+
+export function verifyGatewayProvisioningToken(token: string): GatewayProvisioningTokenClaims {
+  const decoded = jwt.verify(token, config.jwt.secret) as GatewayProvisioningTokenClaims;
+
+  if (decoded.type !== 'gateway_provisioning') {
+    throw new Error('Invalid provisioning token type');
+  }
+
+  if (!decoded.jti || !decoded.id || !decoded.gatewayHardwareId) {
+    throw new Error('Provisioning token missing required fields');
   }
 
   return decoded;
