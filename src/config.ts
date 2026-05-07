@@ -10,6 +10,8 @@ interface Config {
   };
   mongodb: {
     uri: string;
+    connectTimeoutMs: number;
+    serverSelectionTimeoutMs: number;
   };
   mqtt: {
     brokerUrl: string;
@@ -49,6 +51,8 @@ const config: Config = {
 
   mongodb: {
     uri: process.env.MONGODB_URI || 'mongodb://localhost:27017/water-quality-monitor',
+    connectTimeoutMs: parseInt(process.env.MONGODB_CONNECT_TIMEOUT_MS || '30000', 10),
+    serverSelectionTimeoutMs: parseInt(process.env.MONGODB_SERVER_SELECTION_TIMEOUT_MS || '30000', 10),
   },
 
   mqtt: {
