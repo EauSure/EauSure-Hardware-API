@@ -74,6 +74,4 @@ const GatewaySchema = new Schema<IGateway>({
   config: { type: GatewayConfigSchema, default: () => ({}) },
   status: { type: GatewayStatusSchema, default: () => ({}) },
 }, { timestamps: true });
-
-GatewaySchema.index({ ownerId: 1 });
 export default mongoose.model<IGateway>('Gateway', GatewaySchema);

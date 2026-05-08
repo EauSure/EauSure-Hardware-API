@@ -5,6 +5,7 @@ import IotNode from '../models/IotNode';
 import User from '../models/User';
 import PairingSession from '../models/PairingSession';
 import { authenticate, authenticateGateway } from '../middleware/auth';
+import { ensureDatabaseReady } from '../services/database';
 import {
   buildNodeProof,
   generateEncryptionKey,
@@ -67,6 +68,15 @@ router.post(
       const errors = validationResult(req);
       if (!errors.isEmpty()) {
         res.status(400).json({ success: false, errors: errors.array() });
+        return;
+      }
+
+      const dbReady = await ensureDatabaseReady();
+      if (!dbReady) {
+        res.status(503).json({
+          success: false,
+          message: 'Database unavailable. Retry in a few seconds.',
+        });
         return;
       }
 
