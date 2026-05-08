@@ -64,6 +64,4 @@ const IotNodeSchema = new Schema<IIotNode>({
   status: { type: IotNodeStatusSchema, default: () => ({}) },
 }, { timestamps: true });
 
-IotNodeSchema.index({ gatewayId: 1 });
-
 export default mongoose.model<IIotNode>('IotNode', IotNodeSchema);

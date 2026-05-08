@@ -196,6 +196,15 @@ router.post(
         return;
       }
 
+      const dbReady = await ensureDatabaseReady();
+      if (!dbReady) {
+        res.status(503).json({
+          success: false,
+          message: 'Database unavailable. Retry provisioning in a few seconds.',
+        });
+        return;
+      }
+
       const gatewayHardwareId = String(req.body.gatewayHardwareId).trim().toUpperCase();
       const challenge = String(req.body.challenge).trim();
 
