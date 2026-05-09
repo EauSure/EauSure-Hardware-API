@@ -36,9 +36,21 @@ router.get('/', async (req: Request, res: Response): Promise<void> => {
 
     const gateways = await Gateway.find({ ownerId: req.user!.id })
       .select('-deviceSecret')
+      .lean()
       .sort({ createdAt: -1 });
 
-    res.json({ success: true, data: gateways });
+    const now = Date.now();
+    const data = gateways.map(gw => {
+      if (gw.lastSeenAt) {
+        gw.status = gw.status || { online: false, rssi: 0, snr: 0, firmwareVersion: '', lastHeartbeatAt: null };
+        const measureIntervalMs = (gw.config?.measureInterval || 60) * 1000;
+        // Consider gateway online if seen within the measure interval + 2 minutes margin
+        gw.status.online = (now - new Date(gw.lastSeenAt).getTime()) < (measureIntervalMs + 120000);
+      }
+      return gw;
+    });
+
+    res.json({ success: true, data });
   } catch (err) {
     console.error('[Gateways] list error:', err);
     res.status(500).json({ success: false, message: 'Failed to fetch gateways' });
@@ -201,9 +213,20 @@ router.get('/:gatewayId/nodes', async (req: Request, res: Response): Promise<voi
     }
 
     const nodes = await IotNode.find({ gatewayId: gateway._id })
-      .select('-deviceSecret -encryptionKey');
+      .select('-deviceSecret -encryptionKey')
+      .lean();
 
-    res.json({ success: true, data: nodes });
+    const now = Date.now();
+    const measureIntervalMs = (gateway.config?.measureInterval || 60) * 1000;
+    const data = nodes.map(node => {
+      if (node.status && node.status.lastSeenAt) {
+        // Node is active if seen within the measure interval + 3 minutes margin
+        node.status.active = (now - new Date(node.status.lastSeenAt).getTime()) < (measureIntervalMs + 180000);
+      }
+      return node;
+    });
+
+    res.json({ success: true, data });
   } catch (err) {
     res.status(500).json({ success: false, message: 'Failed to fetch nodes' });
   }
