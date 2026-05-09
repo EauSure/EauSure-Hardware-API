@@ -513,6 +513,46 @@ router.post(
   },
 );
 
+router.get(
+  '/:gatewayId/pairing/session/:sessionId',
+  [
+    param('gatewayId').isString().notEmpty(),
+    param('sessionId').isString().notEmpty(),
+  ],
+  async (req: Request, res: Response): Promise<void> => {
+    try {
+      const dbReady = await ensureDatabaseReady();
+      if (!dbReady) {
+        res.status(503).json({ success: false, message: 'Database unavailable' });
+        return;
+      }
+
+      const session = await PairingSession.findOne({ tokenId: req.params.sessionId });
+      if (!session) {
+        res.status(404).json({ success: false, message: 'Session not found' });
+        return;
+      }
+
+      // Check ownership
+      if (session.userId.toString() !== req.user!.id) {
+        res.status(403).json({ success: false, message: 'Access denied' });
+        return;
+      }
+
+      res.json({
+        success: true,
+        data: {
+          status: session.status,
+          failureReason: session.failureReason,
+        }
+      });
+    } catch (err) {
+      console.error('[Gateways] get session error:', err);
+      res.status(500).json({ success: false, message: 'Failed to fetch session status' });
+    }
+  }
+);
+
 router.delete('/:gatewayId/nodes/:nodeId', async (req: Request, res: Response): Promise<void> => {
   try {
     const dbReady = await ensureDatabaseReady();
