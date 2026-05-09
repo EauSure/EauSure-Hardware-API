@@ -20,6 +20,9 @@ import {
   buildSetConfigPayload,
 } from '../services/commandService';
 
+import mqtt from 'mqtt';
+import config from '../config';
+
 const router = express.Router();
 router.use(authenticate);
 
@@ -265,6 +268,92 @@ router.post(
       res.status(500).json({ success: false, message: 'Failed to create provisioning session' });
     }
   },
+);
+
+router.get(
+  '/:gatewayId/pairing/scan',
+  [param('gatewayId').isString().notEmpty()],
+  async (req: Request, res: Response): Promise<void> => {
+    try {
+      const gateway = await Gateway.findOne({
+        _id: req.params.gatewayId,
+        ownerId: req.user!.id,
+      });
+
+      if (!gateway) {
+        res.status(404).json({ success: false, message: 'Gateway not found' });
+        return;
+      }
+
+      // Temporarily connect to MQTT to perform the request-response flow
+      const client = mqtt.connect(config.mqtt.brokerUrl, {
+        clientId: `${config.mqtt.clientId}-scan-${Date.now()}`,
+        username: config.mqtt.username,
+        password: config.mqtt.password,
+        connectTimeout: 5000,
+        reconnectPeriod: 0,
+      });
+
+      const eventsTopic = `events/gateway/${gateway.gatewayId}`;
+      const commandsTopic = `commands/gateway/${gateway.gatewayId}`;
+
+      let responded = false;
+      const timeoutMs = 15000;
+
+      const finish = (status: number, payload: any) => {
+        if (!responded) {
+          responded = true;
+          client.end();
+          res.status(status).json(payload);
+        }
+      };
+
+      client.on('connect', () => {
+        client.subscribe(eventsTopic, (err) => {
+          if (err) {
+            console.error('[MQTT] Scan subscribe error:', err);
+            finish(500, { success: false, message: 'Failed to subscribe to MQTT' });
+            return;
+          }
+
+          // Publish the trigger command
+          const payload = JSON.stringify({ cmd: 'SCAN_NODES', ts: Date.now() });
+          client.publish(commandsTopic, payload, { qos: 1 });
+
+          // Start timeout
+          setTimeout(() => {
+            finish(408, { success: false, message: 'Scan timeout. No nodes found.' });
+          }, timeoutMs);
+        });
+      });
+
+      client.on('message', (topic, message) => {
+        if (topic === eventsTopic) {
+          try {
+            const data = JSON.parse(message.toString());
+            if (data.event === 'candidate_found') {
+              finish(200, { success: true, data: {
+                nodeId: data.nodeId,
+                nodeName: data.nodeName,
+                bleMac: data.bleMac
+              }});
+            }
+          } catch (e) {
+            // ignore parse errors from other events
+          }
+        }
+      });
+
+      client.on('error', (err) => {
+        console.error('[MQTT] Scan client error:', err);
+        finish(500, { success: false, message: 'MQTT connection error' });
+      });
+
+    } catch (err) {
+      console.error('[Gateways] scan nodes error:', err);
+      res.status(500).json({ success: false, message: 'Failed to trigger scan' });
+    }
+  }
 );
 
 router.post(
