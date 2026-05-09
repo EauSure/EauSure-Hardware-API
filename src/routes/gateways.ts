@@ -28,6 +28,12 @@ router.use(authenticate);
 
 router.get('/', async (req: Request, res: Response): Promise<void> => {
   try {
+    const dbReady = await ensureDatabaseReady();
+    if (!dbReady) {
+      res.status(503).json({ success: false, message: 'Database unavailable' });
+      return;
+    }
+
     const gateways = await Gateway.find({ ownerId: req.user!.id })
       .select('-deviceSecret')
       .sort({ createdAt: -1 });
@@ -44,6 +50,12 @@ router.delete(
   [param('gatewayId').isString().notEmpty()],
   async (req: Request, res: Response): Promise<void> => {
     try {
+      const dbReady = await ensureDatabaseReady();
+      if (!dbReady) {
+        res.status(503).json({ success: false, message: 'Database unavailable' });
+        return;
+      }
+
       const gateway = await Gateway.findOne({
         _id: req.params.gatewayId,
         ownerId: req.user!.id,
@@ -81,6 +93,12 @@ router.delete(
 
 router.get('/:gatewayId/status', async (req: Request, res: Response): Promise<void> => {
   try {
+    const dbReady = await ensureDatabaseReady();
+    if (!dbReady) {
+      res.status(503).json({ success: false, message: 'Database unavailable' });
+      return;
+    }
+
     const gateway = await Gateway.findOne({
       _id: req.params.gatewayId,
       ownerId: req.user!.id,
@@ -166,6 +184,12 @@ router.put(
 
 router.get('/:gatewayId/nodes', async (req: Request, res: Response): Promise<void> => {
   try {
+    const dbReady = await ensureDatabaseReady();
+    if (!dbReady) {
+      res.status(503).json({ success: false, message: 'Database unavailable' });
+      return;
+    }
+
     const gateway = await Gateway.findOne({
       _id: req.params.gatewayId,
       ownerId: req.user!.id,
@@ -275,6 +299,12 @@ router.get(
   [param('gatewayId').isString().notEmpty()],
   async (req: Request, res: Response): Promise<void> => {
     try {
+      const dbReady = await ensureDatabaseReady();
+      if (!dbReady) {
+        res.status(503).json({ success: false, message: 'Database unavailable' });
+        return;
+      }
+
       const gateway = await Gateway.findOne({
         _id: req.params.gatewayId,
         ownerId: req.user!.id,
@@ -366,6 +396,12 @@ router.post(
   ],
   async (req: Request, res: Response): Promise<void> => {
     try {
+      const dbReady = await ensureDatabaseReady();
+      if (!dbReady) {
+        res.status(503).json({ success: false, message: 'Database unavailable' });
+        return;
+      }
+
       const errors = validationResult(req);
       if (!errors.isEmpty()) {
         res.status(400).json({ success: false, errors: errors.array() });
@@ -476,6 +512,12 @@ router.post(
 
 router.delete('/:gatewayId/nodes/:nodeId', async (req: Request, res: Response): Promise<void> => {
   try {
+    const dbReady = await ensureDatabaseReady();
+    if (!dbReady) {
+      res.status(503).json({ success: false, message: 'Database unavailable' });
+      return;
+    }
+
     const gateway = await Gateway.findOne({
       _id: req.params.gatewayId,
       ownerId: req.user!.id,
@@ -514,6 +556,12 @@ router.delete('/:gatewayId/nodes/:nodeId', async (req: Request, res: Response): 
 
 router.post('/:gatewayId/nodes/:nodeId/measure', async (req: Request, res: Response): Promise<void> => {
   try {
+    const dbReady = await ensureDatabaseReady();
+    if (!dbReady) {
+      res.status(503).json({ success: false, message: 'Database unavailable' });
+      return;
+    }
+
     const gateway = await Gateway.findOne({
       _id: req.params.gatewayId,
       ownerId: req.user!.id,
@@ -565,6 +613,12 @@ router.put(
   ],
   async (req: Request, res: Response): Promise<void> => {
     try {
+      const dbReady = await ensureDatabaseReady();
+      if (!dbReady) {
+        res.status(503).json({ success: false, message: 'Database unavailable' });
+        return;
+      }
+
       const errors = validationResult(req);
       if (!errors.isEmpty()) {
         res.status(400).json({ success: false, errors: errors.array() });
