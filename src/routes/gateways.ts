@@ -322,6 +322,7 @@ router.get(
         password: config.mqtt.password,
         connectTimeout: 5000,
         reconnectPeriod: 0,
+        rejectUnauthorized: false,
       });
 
       const eventsTopic = `events/gateway/${gateway.gatewayId}`;
@@ -339,16 +340,18 @@ router.get(
       };
 
       client.on('connect', () => {
-        client.subscribe(eventsTopic, (err) => {
+        client.subscribe(eventsTopic, { qos: 1 }, (err) => {
           if (err) {
             console.error('[MQTT] Scan subscribe error:', err);
             finish(500, { success: false, message: 'Failed to subscribe to MQTT' });
             return;
           }
 
-          // Publish the trigger command
-          const payload = JSON.stringify({ cmd: 'SCAN_NODES', ts: Date.now() });
-          client.publish(commandsTopic, payload, { qos: 1 });
+          // Delay slightly to ensure subscription is active on broker
+          setTimeout(() => {
+            const payload = JSON.stringify({ cmd: 'SCAN_NODES', ts: Date.now() });
+            client.publish(commandsTopic, payload, { qos: 1 });
+          }, 500);
 
           // Start timeout
           setTimeout(() => {
