@@ -576,6 +576,61 @@ router.get(
   }
 );
 
+router.put(
+  '/:gatewayId/location',
+  [
+    param('gatewayId').isString().notEmpty(),
+    body('lat').isFloat({ min: -90, max: 90 }),
+    body('lng').isFloat({ min: -180, max: 180 }),
+    body('city').optional().isString().trim(),
+    body('country').optional().isString().trim(),
+  ],
+  async (req: Request, res: Response): Promise<void> => {
+    try {
+      const dbReady = await ensureDatabaseReady();
+      if (!dbReady) {
+        res.status(503).json({ success: false, message: 'Database unavailable' });
+        return;
+      }
+
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        res.status(400).json({ success: false, errors: errors.array() });
+        return;
+      }
+
+      const gateway = await Gateway.findOne({
+        _id: req.params.gatewayId,
+        ownerId: req.user!.id,
+      });
+
+      if (!gateway) {
+        res.status(404).json({ success: false, message: 'Gateway not found' });
+        return;
+      }
+
+      gateway.location = {
+        lat: parseFloat(req.body.lat),
+        lng: parseFloat(req.body.lng),
+        city: req.body.city?.trim() || gateway.location?.city || '',
+        country: req.body.country?.trim() || gateway.location?.country || '',
+      };
+      await gateway.save();
+
+      console.log(`[Gateways] location updated — ${gateway.gatewayId} lat:${gateway.location.lat} lng:${gateway.location.lng}`);
+
+      res.json({
+        success: true,
+        message: 'Gateway location updated',
+        data: { location: gateway.location },
+      });
+    } catch (err) {
+      console.error('[Gateways] location update error:', err);
+      res.status(500).json({ success: false, message: 'Failed to update gateway location' });
+    }
+  },
+);
+
 router.delete('/:gatewayId/nodes/:nodeId', async (req: Request, res: Response): Promise<void> => {
   try {
     const dbReady = await ensureDatabaseReady();

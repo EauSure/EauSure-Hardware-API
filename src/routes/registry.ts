@@ -183,6 +183,15 @@ router.post(
       gateway.status.lastHeartbeatAt = new Date();
       if (rssi !== undefined) gateway.status.rssi = rssi;
       if (snr !== undefined) gateway.status.snr = snr;
+
+      if (req.headers['x-vercel-ip-latitude'] && req.headers['x-vercel-ip-longitude']) {
+        gateway.location = gateway.location || {};
+        gateway.location.lat = parseFloat(req.headers['x-vercel-ip-latitude'] as string);
+        gateway.location.lng = parseFloat(req.headers['x-vercel-ip-longitude'] as string);
+        gateway.location.city = (req.headers['x-vercel-ip-city'] as string) || '';
+        gateway.location.country = (req.headers['x-vercel-ip-country'] as string) || '';
+      }
+
       await gateway.save();
 
       const pendingCommands = await Command.find({
@@ -544,6 +553,14 @@ router.post(
 
       if (!gateway.mqttTopic) {
         gateway.mqttTopic = `commands/gateway/${gateway.gatewayId}`;
+      }
+
+      if (req.headers['x-vercel-ip-latitude'] && req.headers['x-vercel-ip-longitude']) {
+        gateway.location = gateway.location || {};
+        gateway.location.lat = parseFloat(req.headers['x-vercel-ip-latitude'] as string);
+        gateway.location.lng = parseFloat(req.headers['x-vercel-ip-longitude'] as string);
+        gateway.location.city = (req.headers['x-vercel-ip-city'] as string) || '';
+        gateway.location.country = (req.headers['x-vercel-ip-country'] as string) || '';
       }
 
       await gateway.save();

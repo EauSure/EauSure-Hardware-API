@@ -16,6 +16,13 @@ export interface IGatewayStatus {
   firmwareVersion: string;
 }
 
+export interface IGatewayLocation {
+  lat: number | null;
+  lng: number | null;
+  city: string;
+  country: string;
+}
+
 export interface IGateway extends Document {
   gatewayId: string;
   deviceSecret: string;
@@ -26,6 +33,7 @@ export interface IGateway extends Document {
   mqttTopic: string;
   config: IGatewayConfig;
   status: IGatewayStatus;
+  location: IGatewayLocation;
 }
 
 const GatewayConfigSchema = new Schema<IGatewayConfig>({
@@ -42,6 +50,13 @@ const GatewayStatusSchema = new Schema<IGatewayStatus>({
   rssi: { type: Number, default: 0 },
   snr: { type: Number, default: 0 },
   firmwareVersion: { type: String, default: '' },
+}, { _id: false });
+
+const GatewayLocationSchema = new Schema<IGatewayLocation>({
+  lat: { type: Number, default: null },
+  lng: { type: Number, default: null },
+  city: { type: String, default: '' },
+  country: { type: String, default: '' },
 }, { _id: false });
 
 const GatewaySchema = new Schema<IGateway>({
@@ -73,5 +88,6 @@ const GatewaySchema = new Schema<IGateway>({
   mqttTopic: { type: String, default: '' },
   config: { type: GatewayConfigSchema, default: () => ({}) },
   status: { type: GatewayStatusSchema, default: () => ({}) },
+  location: { type: GatewayLocationSchema, default: () => ({}) },
 }, { timestamps: true });
 export default mongoose.model<IGateway>('Gateway', GatewaySchema);
