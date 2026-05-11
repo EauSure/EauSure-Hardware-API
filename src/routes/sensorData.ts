@@ -4,6 +4,7 @@ import SensorData from '../models/SensorData';
 import Gateway from '../models/Gateway';
 import IotNode from '../models/IotNode';
 import { authenticate, authenticateGateway } from '../middleware/auth';
+import { ensureDatabaseReady } from '../services/database';
 import mqttService from '../services/mqttService';
 
 const router = express.Router();
@@ -27,6 +28,12 @@ router.post(
       const errors = validationResult(req);
       if (!errors.isEmpty()) {
         res.status(400).json({ success: false, errors: errors.array() });
+        return;
+      }
+
+      const dbReady = await ensureDatabaseReady();
+      if (!dbReady) {
+        res.status(503).json({ success: false, message: 'Database unavailable' });
         return;
       }
 
@@ -155,6 +162,12 @@ router.get(
       const errors = validationResult(req);
       if (!errors.isEmpty()) {
         res.status(400).json({ success: false, errors: errors.array() });
+        return;
+      }
+
+      const dbReady = await ensureDatabaseReady();
+      if (!dbReady) {
+        res.status(503).json({ success: false, message: 'Database unavailable' });
         return;
       }
 
