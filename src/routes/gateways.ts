@@ -352,7 +352,7 @@ router.get(
       const commandsTopic = `commands/gateway/${gateway.gatewayId}`;
 
       let responded = false;
-      const timeoutMs = 15000;
+      const timeoutMs = 25000; // ESP32 WiFi scan can take 10-15s; give enough margin before Vercel 30s limit
 
       const finish = (status: number, payload: any) => {
         if (!responded) {
