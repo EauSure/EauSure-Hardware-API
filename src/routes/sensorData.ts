@@ -53,18 +53,10 @@ router.post(
       node.status.active     = true;
       await node.save();
 
-      // Update gateway last-seen and location
+      // Update gateway last-seen
       gateway.lastSeenAt        = new Date();
       gateway.status.lastHeartbeatAt = new Date();
       gateway.status.online     = true;
-
-      if (req.headers['x-vercel-ip-latitude'] && req.headers['x-vercel-ip-longitude']) {
-        gateway.location = gateway.location || {};
-        gateway.location.lat = parseFloat(req.headers['x-vercel-ip-latitude'] as string);
-        gateway.location.lng = parseFloat(req.headers['x-vercel-ip-longitude'] as string);
-        gateway.location.city = (req.headers['x-vercel-ip-city'] as string) || '';
-        gateway.location.country = (req.headers['x-vercel-ip-country'] as string) || '';
-      }
 
       await gateway.save();
 
