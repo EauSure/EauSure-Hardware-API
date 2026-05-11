@@ -184,7 +184,10 @@ router.post(
       if (rssi !== undefined) gateway.status.rssi = rssi;
       if (snr !== undefined) gateway.status.snr = snr;
 
-      if (req.headers['x-vercel-ip-latitude'] && req.headers['x-vercel-ip-longitude']) {
+      // Only use Vercel IP headers as a fallback if no GPS location has been set yet.
+      // GPS location (set via PUT /gateways/:id/location at BLE provisioning time) takes priority.
+      const hasGpsLocation = gateway.location && gateway.location.lat && gateway.location.lng;
+      if (!hasGpsLocation && req.headers['x-vercel-ip-latitude'] && req.headers['x-vercel-ip-longitude']) {
         gateway.location = gateway.location || {};
         gateway.location.lat = parseFloat(req.headers['x-vercel-ip-latitude'] as string);
         gateway.location.lng = parseFloat(req.headers['x-vercel-ip-longitude'] as string);
@@ -555,7 +558,10 @@ router.post(
         gateway.mqttTopic = `commands/gateway/${gateway.gatewayId}`;
       }
 
-      if (req.headers['x-vercel-ip-latitude'] && req.headers['x-vercel-ip-longitude']) {
+      // Only use Vercel IP headers as a fallback if no GPS location has been set yet.
+      // GPS location (set via PUT /gateways/:id/location at BLE provisioning time) takes priority.
+      const hasGpsLocation = gateway.location && gateway.location.lat && gateway.location.lng;
+      if (!hasGpsLocation && req.headers['x-vercel-ip-latitude'] && req.headers['x-vercel-ip-longitude']) {
         gateway.location = gateway.location || {};
         gateway.location.lat = parseFloat(req.headers['x-vercel-ip-latitude'] as string);
         gateway.location.lng = parseFloat(req.headers['x-vercel-ip-longitude'] as string);
