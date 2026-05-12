@@ -8,6 +8,16 @@ export interface IIotNodeStatus {
   lastSnr: number;
 }
 
+export interface IIotNodeConfig {
+  measureInterval: number;      // seconds — 1800 (30min) to 28800 (8h)
+  shakeEnabled: boolean;
+  shakeThreshold: number;       // always stored in g internally
+  units: 'metric' | 'imperial';
+  nodeActive: boolean;
+  alertMode: 'all' | 'critical_only' | 'none';
+  gatewayVocalAlerts: boolean;  // per-node: gateway emits local sound alert for this node
+}
+
 export interface IIotNode extends Document {
   nodeId: string;
   deviceSecret: string;
@@ -17,6 +27,7 @@ export interface IIotNode extends Document {
   encryptionKey: string | null;
   pairedAt: Date | null;
   status: IIotNodeStatus;
+  config: IIotNodeConfig;
 }
 
 const IotNodeStatusSchema = new Schema<IIotNodeStatus>({
@@ -25,6 +36,16 @@ const IotNodeStatusSchema = new Schema<IIotNodeStatus>({
   firmwareVersion: { type: String, default: '' },
   lastRssi: { type: Number, default: 0 },
   lastSnr: { type: Number, default: 0 },
+}, { _id: false });
+
+const IotNodeConfigSchema = new Schema<IIotNodeConfig>({
+  measureInterval:    { type: Number,  default: 10800, min: 1800, max: 28800 },
+  shakeEnabled:       { type: Boolean, default: true },
+  shakeThreshold:     { type: Number,  default: 1.1,  min: 0.5,  max: 5.0 },
+  units:              { type: String,  enum: ['metric', 'imperial'], default: 'metric' },
+  nodeActive:         { type: Boolean, default: true },
+  alertMode:          { type: String,  enum: ['all', 'critical_only', 'none'], default: 'all' },
+  gatewayVocalAlerts: { type: Boolean, default: true },
 }, { _id: false });
 
 const IotNodeSchema = new Schema<IIotNode>({
@@ -62,6 +83,7 @@ const IotNodeSchema = new Schema<IIotNode>({
   },
   pairedAt: { type: Date, default: null },
   status: { type: IotNodeStatusSchema, default: () => ({}) },
+  config: { type: IotNodeConfigSchema, default: () => ({}) },
 }, { timestamps: true });
 
 export default mongoose.model<IIotNode>('IotNode', IotNodeSchema);

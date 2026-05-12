@@ -78,8 +78,14 @@ export function buildSetConfigPayload(
   config: Record<string, any>,
   nodeId?: string,
 ): Record<string, any> {
+  // Only shake config is forwarded to the node via LoRa.
+  // measureInterval and nodeActive are gateway-side only.
+  const nodeConfig: Record<string, any> = {};
+  if (config.shakeThreshold !== undefined) nodeConfig.shakeThreshold = config.shakeThreshold;
+  if (config.shakeEnabled   !== undefined) nodeConfig.shakeEnabled   = config.shakeEnabled;
+
   return {
     ...(nodeId ? { nodeId } : {}),
-    config,
+    config: nodeConfig,
   };
 }

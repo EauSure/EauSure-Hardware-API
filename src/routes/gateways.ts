@@ -726,11 +726,14 @@ router.put(
   [
     param('gatewayId').isString(),
     param('nodeId').isString(),
-    body('measureInterval').optional().isInt({ min: 10, max: 3600 }),
+    body('measureInterval').optional().isInt({ min: 1800, max: 28800 }),
     body('shakeEnabled').optional().isBoolean(),
     body('shakeThreshold').optional().isFloat({ min: 0.5, max: 5.0 }),
     body('units').optional().isIn(['metric', 'imperial']),
     body('nodeActive').optional().isBoolean(),
+    body('alertMode').optional().isIn(['all', 'critical_only', 'none']),
+    body('gatewayVocalAlerts').optional().isBoolean(),
+    body('name').optional().isString().trim().isLength({ min: 1, max: 64 }),
   ],
   async (req: Request, res: Response): Promise<void> => {
     try {
@@ -766,7 +769,7 @@ router.put(
         return;
       }
 
-      const allowed = ['measureInterval', 'shakeEnabled', 'shakeThreshold', 'units', 'nodeActive'];
+      const allowed = ['measureInterval', 'shakeEnabled', 'shakeThreshold', 'units', 'nodeActive', 'alertMode', 'gatewayVocalAlerts', 'name'];
       const updates: Record<string, any> = {};
       for (const key of allowed) {
         if (req.body[key] !== undefined) {
@@ -774,17 +777,37 @@ router.put(
         }
       }
 
-      const { ok, commandId } = await sendCommand(
-        gateway,
-        'SET_CONFIG',
-        buildSetConfigPayload(updates, node.nodeId),
-        node.nodeId,
-      );
+      // Persist config on the node document
+      if (!node.config) (node as any).config = {};
+      Object.assign(node.config, updates);
+      if (updates.name) node.name = updates.name;
+      await node.save();
+
+      // Forward only shake config to node via LoRa SET_CONFIG
+      // measureInterval and nodeActive are gateway-side only
+      const hwFields = ['shakeEnabled', 'shakeThreshold'];
+      const hwUpdates: Record<string, any> = {};
+      for (const key of hwFields) {
+        if (updates[key] !== undefined) hwUpdates[key] = updates[key];
+      }
+
+      let mqttPublished = false;
+      let commandId: string | undefined;
+      if (Object.keys(hwUpdates).length > 0) {
+        const result = await sendCommand(
+          gateway,
+          'SET_CONFIG',
+          buildSetConfigPayload(hwUpdates, node.nodeId),
+          node.nodeId,
+        );
+        mqttPublished = result.ok;
+        commandId = result.commandId;
+      }
 
       res.json({
         success: true,
-        message: 'Node config update sent',
-        data: { commandId, mqttPublished: ok, updates },
+        message: 'Node config updated',
+        data: { config: node.config, commandId, mqttPublished },
       });
     } catch (err) {
       console.error('[Gateways] node config error:', err);
