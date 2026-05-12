@@ -393,6 +393,9 @@ router.get(
                 nodeName: data.nodeName,
                 bleMac: data.bleMac
               }});
+            } else if (data.event === 'scan_complete' && !data.found) {
+              // Gateway scanned but found no unpaired nodes
+              finish(200, { success: true, data: null });
             }
           } catch (e) {
             // ignore parse errors from other events
