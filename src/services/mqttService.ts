@@ -58,8 +58,9 @@ class MQTTService {
   /**
    * Publish any payload to any topic.
    * Handles connect-publish-disconnect cycle automatically for serverless.
+   * @param retain — if true, broker retains the message so late subscribers receive it
    */
-  async publishEvent(topic: string, data: any): Promise<boolean> {
+  async publishEvent(topic: string, data: any, retain: boolean = false): Promise<boolean> {
     // If not connected, attempt a fresh connection
     if (!this.client || !this.isConnected) {
       try {
@@ -76,13 +77,13 @@ class MQTTService {
       this.client!.publish(
         topic,
         payload,
-        { qos: config.mqtt.qos, retain: false },
+        { qos: config.mqtt.qos, retain },
         (error) => {
           if (error) {
             console.error('[MQTT] Publish error:', error);
             resolve(false);
           } else {
-            console.log(`[MQTT] Published → ${topic}`);
+            console.log(`[MQTT] Published → ${topic}${retain ? ' (retained)' : ''}`);
             resolve(true);
           }
         }
@@ -93,10 +94,12 @@ class MQTTService {
   /**
    * Publish a typed command to a specific gateway topic.
    * commands/gateway/{gatewayHardwareId}
+   * Uses retain=true so the gateway receives the command even if it
+   * temporarily disconnected from the broker (TLS window, heap optimization, etc.)
    */
   async publishGatewayCommand(gatewayHardwareId: string, payload: any): Promise<boolean> {
     const topic = `commands/gateway/${gatewayHardwareId}`;
-    return this.publishEvent(topic, payload);
+    return this.publishEvent(topic, payload, true);
   }
 
   isClientConnected(): boolean {

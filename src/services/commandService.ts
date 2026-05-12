@@ -27,7 +27,10 @@ export async function sendCommand(
   };
 
   const topic = `commands/gateway/${gateway.gatewayId}`;
-  const published = await mqttService.publishEvent(topic, mqttPayload);
+  // Publish with retain=true so the gateway receives the command
+  // even if it's temporarily disconnected (TLS window, audio, etc.)
+  // The gateway firmware clears retained messages after processing.
+  const published = await mqttService.publishEvent(topic, mqttPayload, true);
 
   if (published) {
     command.status = 'sent';
