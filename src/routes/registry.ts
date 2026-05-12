@@ -667,6 +667,60 @@ router.post(
   },
 );
 
+// =====================================================
+// POST /api/registry/pair-node/fail-session
+// Gateway-called when pairing fails early (before pairingToken is obtained).
+// Marks the session as failed so the mobile app can react.
+// =====================================================
+router.post(
+  '/pair-node/fail-session',
+  authenticateGateway,
+  [
+    body('sessionId').isString().notEmpty(),
+    body('reason').optional().isString().trim(),
+  ],
+  async (req: Request, res: Response): Promise<void> => {
+    try {
+      const dbReady = await ensureDatabaseReady();
+      if (!dbReady) {
+        res.status(503).json({ success: false, message: 'Database unavailable' });
+        return;
+      }
+
+      const sessionId = String(req.body.sessionId).trim();
+      const reason = String(req.body.reason || 'Pairing failed').trim();
+
+      const session = await PairingSession.findOne({ tokenId: sessionId });
+      if (!session) {
+        res.status(404).json({ success: false, message: 'Session not found' });
+        return;
+      }
+
+      if (session.status === 'completed' || session.status === 'consumed') {
+        // Already completed — do not overwrite
+        res.json({ success: true, message: 'Session already finalized' });
+        return;
+      }
+
+      session.status = 'failed';
+      session.failedAt = new Date();
+      session.failureReason = reason;
+      await session.save();
+
+      console.log(`[Registry] Session ${sessionId} marked as failed: ${reason}`);
+
+      res.json({
+        success: true,
+        message: 'Session marked as failed',
+        data: { sessionId, status: 'failed' },
+      });
+    } catch (err) {
+      console.error('[Registry] fail-session error:', err);
+      res.status(500).json({ success: false, message: 'Failed to mark session' });
+    }
+  },
+);
+
 router.post(
   '/gateway/node-status',
   authenticateGateway,
