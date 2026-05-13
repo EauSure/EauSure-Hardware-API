@@ -57,6 +57,7 @@ router.post(
       node.status.lastSeenAt = new Date();
       node.status.lastRssi   = payload.rssi || 0;
       node.status.lastSnr    = payload.snr  || 0;
+      node.status.lastBattery= payload.b    || 0;
       node.status.active     = true;
       await node.save();
 

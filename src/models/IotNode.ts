@@ -6,6 +6,7 @@ export interface IIotNodeStatus {
   firmwareVersion: string;
   lastRssi: number;
   lastSnr: number;
+  lastBattery: number;
 }
 
 export interface IIotNodeConfig {
@@ -36,6 +37,7 @@ const IotNodeStatusSchema = new Schema<IIotNodeStatus>({
   firmwareVersion: { type: String, default: '' },
   lastRssi: { type: Number, default: 0 },
   lastSnr: { type: Number, default: 0 },
+  lastBattery: { type: Number, default: 0 },
 }, { _id: false });
 
 const IotNodeConfigSchema = new Schema<IIotNodeConfig>({
