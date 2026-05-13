@@ -819,4 +819,44 @@ router.put(
   },
 );
 
+router.post(
+  '/:gatewayId/pairing/cancel',
+  [param('gatewayId').isString().notEmpty()],
+  async (req: Request, res: Response): Promise<void> => {
+    try {
+      const dbReady = await ensureDatabaseReady();
+      if (!dbReady) {
+        res.status(503).json({ success: false, message: 'Database unavailable' });
+        return;
+      }
+
+      const gateway = await Gateway.findOne({
+        _id: req.params.gatewayId,
+        ownerId: req.user!.id,
+      });
+
+      if (!gateway) {
+        res.status(404).json({ success: false, message: 'Gateway not found' });
+        return;
+      }
+
+      const { ok, commandId } = await sendCommand(
+        gateway,
+        'CANCEL_PAIRING',
+        {},
+        null
+      );
+
+      res.json({
+        success: true,
+        message: 'Pairing cancelled on gateway',
+        data: { commandId, mqttPublished: ok },
+      });
+    } catch (err) {
+      console.error('[Gateways] cancel pairing error:', err);
+      res.status(500).json({ success: false, message: 'Failed to cancel pairing' });
+    }
+  }
+);
+
 export default router;

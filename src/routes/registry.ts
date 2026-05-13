@@ -220,6 +220,53 @@ router.post(
   },
 );
 
+// =====================================================
+// GET /api/registry/gateway/:gatewayHardwareId/config
+// Fetch the gateway + its paired node's persisted config.
+// Called by the gateway firmware at boot to restore config
+// that's otherwise lost after reflash.
+// =====================================================
+router.get(
+  '/gateway/:gatewayHardwareId/config',
+  authenticateGateway,
+  async (req: Request, res: Response): Promise<void> => {
+    try {
+      const dbReady = await ensureDatabaseReady();
+      if (!dbReady) {
+        res.status(503).json({ success: false, message: 'Database unavailable' });
+        return;
+      }
+
+      const gatewayHardwareId = String(req.params.gatewayHardwareId).trim().toUpperCase();
+      const gateway = await Gateway.findOne({ gatewayId: gatewayHardwareId });
+      if (!gateway) {
+        res.status(404).json({ success: false, message: 'Gateway not found' });
+        return;
+      }
+
+      // Find paired nodes — include their config
+      const nodes = await IotNode.find({ gatewayId: gateway._id })
+        .select('nodeId name config status')
+        .lean();
+
+      res.json({
+        success: true,
+        data: {
+          gatewayConfig: gateway.config || {},
+          nodes: nodes.map((n: any) => ({
+            nodeId: n.nodeId,
+            name: n.name,
+            config: n.config || {},
+          })),
+        },
+      });
+    } catch (err) {
+      console.error('[Registry] gateway config fetch error:', err);
+      res.status(500).json({ success: false, message: 'Failed to fetch gateway config' });
+    }
+  },
+);
+
 router.post(
   '/command/ack',
   authenticateGateway,
@@ -771,6 +818,36 @@ router.post(
       res.status(500).json({ success: false, message: 'Status update failed' });
     }
   },
+);
+
+router.post(
+  '/gateways/:gatewayHardwareId/unprovision',
+  authenticateGateway,
+  async (req: Request, res: Response): Promise<void> => {
+    try {
+      const dbReady = await ensureDatabaseReady();
+      if (!dbReady) {
+        res.status(503).json({ success: false, message: 'Database unavailable' });
+        return;
+      }
+
+      const gatewayHardwareId = String(req.params.gatewayHardwareId).trim().toUpperCase();
+      const gateway = await Gateway.findOne({ gatewayId: gatewayHardwareId });
+
+      if (!gateway) {
+        res.status(404).json({ success: false, message: 'Gateway not found' });
+        return;
+      }
+
+      gateway.status.provisioned = false;
+      await gateway.save();
+
+      res.json({ success: true, message: 'Gateway marked as unprovisioned' });
+    } catch (err) {
+      console.error('[Registry] unprovision error:', err);
+      res.status(500).json({ success: false, message: 'Failed to unprovision gateway' });
+    }
+  }
 );
 
 export default router;

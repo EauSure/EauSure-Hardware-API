@@ -14,6 +14,7 @@ export interface IGatewayStatus {
   rssi: number;
   snr: number;
   firmwareVersion: string;
+  provisioned: boolean;
 }
 
 export interface IGatewayLocation {
@@ -50,6 +51,7 @@ const GatewayStatusSchema = new Schema<IGatewayStatus>({
   rssi: { type: Number, default: 0 },
   snr: { type: Number, default: 0 },
   firmwareVersion: { type: String, default: '' },
+  provisioned: { type: Boolean, default: true },
 }, { _id: false });
 
 const GatewayLocationSchema = new Schema<IGatewayLocation>({
