@@ -589,6 +589,7 @@ router.post(
       gateway.pairedAt = gateway.pairedAt || new Date();
       gateway.lastSeenAt = new Date();
       gateway.status.online = true;
+      gateway.status.provisioned = true;
       gateway.status.lastHeartbeatAt = new Date();
 
       if (firmwareVersion) {
