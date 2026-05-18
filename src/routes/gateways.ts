@@ -18,6 +18,7 @@ import {
   sendCommand,
   buildConfirmPairingPayload,
   buildSetConfigPayload,
+  buildUpdateFirmwarePayload,
 } from '../services/commandService';
 
 import mqtt from 'mqtt';
@@ -857,6 +858,134 @@ router.post(
       res.status(500).json({ success: false, message: 'Failed to cancel pairing' });
     }
   }
+);
+
+router.post(
+  '/:gatewayId/firmware-update',
+  [
+    param('gatewayId').isString().notEmpty(),
+    body('url').isString().isURL(),
+    body('version').isString().trim().isLength({ min: 1, max: 64 }),
+    body('md5').isString().trim().isLength({ min: 32, max: 64 }),
+    body('size').isInt({ min: 1 }),
+  ],
+  async (req: Request, res: Response): Promise<void> => {
+    try {
+      const dbReady = await ensureDatabaseReady();
+      if (!dbReady) {
+        res.status(503).json({ success: false, message: 'Database unavailable' });
+        return;
+      }
+
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        res.status(400).json({ success: false, errors: errors.array() });
+        return;
+      }
+
+      const gateway = await Gateway.findOne({
+        _id: req.params.gatewayId,
+        ownerId: req.user!.id,
+      });
+
+      if (!gateway) {
+        res.status(404).json({ success: false, message: 'Gateway not found' });
+        return;
+      }
+
+      const { ok, commandId } = await sendCommand(
+        gateway,
+        'UPDATE_FIRMWARE',
+        buildUpdateFirmwarePayload({
+          target: 'gateway',
+          url: String(req.body.url).trim(),
+          version: String(req.body.version).trim(),
+          md5: String(req.body.md5).trim(),
+          size: Number(req.body.size),
+        }),
+        null,
+      );
+
+      res.status(202).json({
+        success: true,
+        message: 'Gateway firmware update queued',
+        data: { commandId, mqttPublished: ok },
+      });
+    } catch (err) {
+      console.error('[Gateways] gateway firmware update error:', err);
+      res.status(500).json({ success: false, message: 'Failed to queue gateway firmware update' });
+    }
+  },
+);
+
+router.post(
+  '/:gatewayId/nodes/:nodeId/firmware-update',
+  [
+    param('gatewayId').isString().notEmpty(),
+    param('nodeId').isString().notEmpty(),
+    body('url').isString().isURL(),
+    body('version').isString().trim().isLength({ min: 1, max: 64 }),
+    body('md5').isString().trim().isLength({ min: 32, max: 64 }),
+    body('size').isInt({ min: 1 }),
+  ],
+  async (req: Request, res: Response): Promise<void> => {
+    try {
+      const dbReady = await ensureDatabaseReady();
+      if (!dbReady) {
+        res.status(503).json({ success: false, message: 'Database unavailable' });
+        return;
+      }
+
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        res.status(400).json({ success: false, errors: errors.array() });
+        return;
+      }
+
+      const gateway = await Gateway.findOne({
+        _id: req.params.gatewayId,
+        ownerId: req.user!.id,
+      });
+
+      if (!gateway) {
+        res.status(404).json({ success: false, message: 'Gateway not found' });
+        return;
+      }
+
+      const node = await IotNode.findOne({
+        nodeId: String(req.params.nodeId).trim().toUpperCase(),
+        gatewayId: gateway._id,
+      });
+
+      if (!node) {
+        res.status(404).json({ success: false, message: 'IoT node not found on this gateway' });
+        return;
+      }
+
+      const { ok, commandId } = await sendCommand(
+        gateway,
+        'UPDATE_FIRMWARE',
+        buildUpdateFirmwarePayload({
+          target: 'node',
+          nodeId: node.nodeId,
+          url: String(req.body.url).trim(),
+          version: String(req.body.version).trim(),
+          md5: String(req.body.md5).trim(),
+          size: Number(req.body.size),
+        }),
+        node.nodeId,
+      );
+
+      res.status(202).json({
+        success: true,
+        message: 'Node firmware update queued',
+        data: { commandId, mqttPublished: ok },
+      });
+    } catch (err) {
+      console.error('[Gateways] node firmware update error:', err);
+      res.status(500).json({ success: false, message: 'Failed to queue node firmware update' });
+    }
+  },
 );
 
 export default router;

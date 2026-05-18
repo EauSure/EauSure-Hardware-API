@@ -92,3 +92,26 @@ export function buildSetConfigPayload(
     config: nodeConfig,
   };
 }
+
+export function buildUpdateFirmwarePayload(input: {
+  target: 'gateway' | 'node';
+  nodeId?: string;
+  url: string;
+  version: string;
+  md5: string;
+  size: number;
+}): Record<string, any> {
+  const payload: Record<string, any> = {
+    target: input.target,
+    url: input.url,
+    version: input.version,
+    md5: input.md5,
+    size: input.size,
+  };
+  
+  if (input.target === 'node' && input.nodeId) {
+    payload.nodeId = input.nodeId;
+  }
+  
+  return payload;
+}

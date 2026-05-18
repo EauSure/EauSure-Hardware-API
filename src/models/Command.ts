@@ -3,12 +3,14 @@ import mongoose, { Document, Schema } from 'mongoose';
 export type CommandType =
   | 'CONFIRM_PAIRING'
   | 'PAIRING_KEY_READY'
+  | 'CANCEL_PAIRING'
   | 'UNPAIR_NODE'
   | 'SET_CONFIG'
   | 'MEASURE_NOW'
   | 'ACTIVATE_NODE'
   | 'DEACTIVATE_NODE'
-  | 'HEALTH_CHECK';
+  | 'HEALTH_CHECK'
+  | 'UPDATE_FIRMWARE';
 
 export type CommandStatus = 'pending' | 'sent' | 'acked' | 'failed' | 'expired';
 
@@ -45,12 +47,14 @@ const CommandSchema = new Schema<ICommand>({
     enum: [
       'CONFIRM_PAIRING',
       'PAIRING_KEY_READY',
+      'CANCEL_PAIRING',
       'UNPAIR_NODE',
       'SET_CONFIG',
       'MEASURE_NOW',
       'ACTIVATE_NODE',
       'DEACTIVATE_NODE',
       'HEALTH_CHECK',
+      'UPDATE_FIRMWARE',
     ],
     required: true,
   },
