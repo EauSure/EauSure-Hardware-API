@@ -5,6 +5,7 @@ import crypto from 'crypto';
 import Gateway from '../models/Gateway';
 import IotNode from '../models/IotNode';
 import PairingSession from '../models/PairingSession';
+import Command from '../models/Command';
 import { authenticate } from '../middleware/auth';
 import { ensureDatabaseReady } from '../services/database';
 import {
@@ -127,6 +128,69 @@ router.get('/:gatewayId/status', async (req: Request, res: Response): Promise<vo
     res.status(500).json({ success: false, message: 'Failed to fetch status' });
   }
 });
+
+router.get(
+  '/:gatewayId/commands/:commandId',
+  [
+    param('gatewayId').isString().notEmpty(),
+    param('commandId').isString().notEmpty(),
+  ],
+  async (req: Request, res: Response): Promise<void> => {
+    try {
+      const dbReady = await ensureDatabaseReady();
+      if (!dbReady) {
+        res.status(503).json({ success: false, message: 'Database unavailable' });
+        return;
+      }
+
+      const gateway = await Gateway.findOne({
+        _id: req.params.gatewayId,
+        ownerId: req.user!.id,
+      }).select('_id gatewayId name');
+
+      if (!gateway) {
+        res.status(404).json({ success: false, message: 'Gateway not found' });
+        return;
+      }
+
+      const command = await Command.findOne({
+        _id: req.params.commandId,
+        gatewayId: gateway._id,
+      }).lean();
+
+      if (!command) {
+        res.status(404).json({ success: false, message: 'Command not found' });
+        return;
+      }
+
+      const isExpired = command.expiresAt ? new Date(command.expiresAt).getTime() < Date.now() : false;
+      const effectiveStatus = isExpired && !['acked', 'failed'].includes(command.status)
+        ? 'expired'
+        : command.status;
+
+      res.json({
+        success: true,
+        data: {
+          commandId: String(command._id),
+          gatewayId: String(gateway._id),
+          gatewayHardwareId: gateway.gatewayId,
+          nodeId: command.nodeId || null,
+          type: command.type,
+          status: effectiveStatus,
+          payload: command.payload || {},
+          sentAt: command.sentAt ? new Date(command.sentAt).toISOString() : null,
+          ackedAt: command.ackedAt ? new Date(command.ackedAt).toISOString() : null,
+          expiresAt: command.expiresAt ? new Date(command.expiresAt).toISOString() : null,
+          createdAt: command.createdAt ? new Date(command.createdAt).toISOString() : null,
+          updatedAt: command.updatedAt ? new Date(command.updatedAt).toISOString() : null,
+        },
+      });
+    } catch (err) {
+      console.error('[Gateways] command status error:', err);
+      res.status(500).json({ success: false, message: 'Failed to fetch command status' });
+    }
+  },
+);
 
 router.put(
   '/:gatewayId/config',
