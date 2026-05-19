@@ -8,6 +8,10 @@ export async function sendCommand(
   payload: Record<string, any>,
   nodeId: string | null = null,
 ): Promise<{ ok: boolean; commandId: string }> {
+  const ttlMs = type === 'UPDATE_FIRMWARE'
+    ? 24 * 60 * 60 * 1000
+    : 5 * 60 * 1000;
+
   const command = new Command({
     gatewayId: gateway._id,
     gatewayHardwareId: gateway.gatewayId,
@@ -15,7 +19,7 @@ export async function sendCommand(
     type,
     payload,
     status: 'pending',
-    expiresAt: new Date(Date.now() + 5 * 60 * 1000),
+    expiresAt: new Date(Date.now() + ttlMs),
   });
   await command.save();
 
@@ -49,6 +53,14 @@ export async function ackCommand(commandId: string): Promise<void> {
     status: 'acked',
     ackedAt: new Date(),
   });
+}
+
+export async function failCommand(commandId: string, reason?: string): Promise<void> {
+  const update: Record<string, unknown> = { status: 'failed' };
+  if (reason) {
+    update.$set = { 'payload.failReason': reason };
+  }
+  await Command.findByIdAndUpdate(commandId, update);
 }
 
 export function buildConfirmPairingPayload(input: {

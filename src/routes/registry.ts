@@ -16,6 +16,7 @@ import {
 } from '../services/pairingService';
 import {
   ackCommand,
+  failCommand,
   sendCommand,
   buildPairingKeyReadyPayload,
 } from '../services/commandService';
@@ -283,6 +284,30 @@ router.post(
       res.json({ success: true });
     } catch (err) {
       res.status(500).json({ success: false, message: 'Ack failed' });
+    }
+  },
+);
+
+router.post(
+  '/command/fail',
+  authenticateGateway,
+  [
+    body('cmdId').isString().notEmpty(),
+    body('reason').optional().isString(),
+  ],
+  async (req: Request, res: Response): Promise<void> => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      res.status(400).json({ success: false, errors: errors.array() });
+      return;
+    }
+
+    try {
+      const reason = req.body.reason ? String(req.body.reason) : undefined;
+      await failCommand(req.body.cmdId, reason);
+      res.json({ success: true });
+    } catch (err) {
+      res.status(500).json({ success: false, message: 'Fail command update failed' });
     }
   },
 );
