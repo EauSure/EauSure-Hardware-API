@@ -453,11 +453,13 @@ router.get(
           try {
             const data = JSON.parse(message.toString());
             if (data.event === 'candidate_found') {
-              finish(200, { success: true, data: {
-                nodeId: data.nodeId,
-                nodeName: data.nodeName,
-                bleMac: data.bleMac
-              }});
+              finish(200, {
+                success: true, data: {
+                  nodeId: data.nodeId,
+                  nodeName: data.nodeName,
+                  bleMac: data.bleMac
+                }
+              });
             } else if (data.event === 'scan_complete' && !data.found) {
               // Gateway scanned but found no unpaired nodes
               finish(200, { success: true, data: null });
@@ -794,7 +796,7 @@ router.put(
   [
     param('gatewayId').isString(),
     param('nodeId').isString(),
-    body('measureInterval').optional().isInt({ min: 1800, max: 28800 }),
+    body('measureInterval').optional().isInt({ min: 180, max: 28800 }),
     body('shakeEnabled').optional().isBoolean(),
     body('shakeThreshold').optional().isFloat({ min: 0.5, max: 5.0 }),
     body('units').optional().isIn(['metric', 'imperial']),

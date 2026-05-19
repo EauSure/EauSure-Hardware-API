@@ -10,7 +10,7 @@ export interface IIotNodeStatus {
 }
 
 export interface IIotNodeConfig {
-  measureInterval: number;      // seconds — 1800 (30min) to 28800 (8h)
+  measureInterval: number;      // seconds — 60 (1min) to 28800 (8h)
   shakeEnabled: boolean;
   shakeThreshold: number;       // always stored in g internally
   units: 'metric' | 'imperial';
@@ -41,7 +41,7 @@ const IotNodeStatusSchema = new Schema<IIotNodeStatus>({
 }, { _id: false });
 
 const IotNodeConfigSchema = new Schema<IIotNodeConfig>({
-  measureInterval:    { type: Number,  default: 10800, min: 1800, max: 28800 },
+  measureInterval:    { type: Number,  default: 10800, min: 60, max: 28800 },
   shakeEnabled:       { type: Boolean, default: true },
   shakeThreshold:     { type: Number,  default: 1.1,  min: 0.5,  max: 5.0 },
   units:              { type: String,  enum: ['metric', 'imperial'], default: 'metric' },
