@@ -59,6 +59,10 @@ router.post(
       node.status.lastSnr    = payload.snr  || 0;
       node.status.lastBattery= payload.b    || 0;
       node.status.active     = true;
+      const fw = typeof payload.fw === 'string' ? payload.fw.trim() : '';
+      if (fw) {
+        node.status.firmwareVersion = fw;
+      }
       await node.save();
 
       // Update gateway last-seen
