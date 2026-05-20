@@ -224,6 +224,12 @@ router.get(
   authenticate,
   async (req: Request, res: Response): Promise<void> => {
     try {
+      const dbReady = await ensureDatabaseReady();
+      if (!dbReady) {
+        res.status(503).json({ success: false, message: 'Database unavailable' });
+        return;
+      }
+
       const filter: any = { userId: req.user!.id };
       if (req.query.nodeId)    filter.nodeId    = req.query.nodeId;
       if (req.query.gatewayId) filter.gatewayId = req.query.gatewayId;
@@ -253,6 +259,12 @@ router.get(
   authenticate,
   async (req: Request, res: Response): Promise<void> => {
     try {
+      const dbReady = await ensureDatabaseReady();
+      if (!dbReady) {
+        res.status(503).json({ success: false, message: 'Database unavailable' });
+        return;
+      }
+
       const hours = parseInt(req.query.hours as string) || 24;
       const filter: any = {
         userId:    req.user!.id,
