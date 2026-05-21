@@ -1,10 +1,47 @@
-# Water Quality Monitor API
+<div align="center">
 
-Backend API for the water quality monitoring platform.
+<img
+  src="eausure_header.svg"
+  alt="Logo officiel EauSûre"
+/>
 
-This service receives telemetry from the gateway, stores it in MongoDB, publishes live updates over MQTT, and manages gateway and IoT node registration, provisioning, pairing, and command delivery.
+<br/>
 
-## High-Level Flow
+<img src="https://img.shields.io/badge/Node.js-43853D?style=for-the-badge&logo=node.js&logoColor=white" alt="Node.js" />
+<img src="https://img.shields.io/badge/Express.js-404D59?style=for-the-badge&logo=express&logoColor=white" alt="Express" />
+<img src="https://img.shields.io/badge/TypeScript-3178C6?style=for-the-badge&logo=typescript&logoColor=white" alt="TypeScript" />
+<img src="https://img.shields.io/badge/MongoDB-4EA94B?style=for-the-badge&logo=mongodb&logoColor=white" alt="MongoDB" />
+<img src="https://img.shields.io/badge/MQTT-1F2937?style=for-the-badge&logo=eclipsemosquitto&logoColor=white" alt="MQTT" />
+
+</div>
+
+# EauSûre Hardware API
+
+API centrale de communication terrain pour l'écosystème EauSûre.
+
+Elle est consommée par :
+- `Application_Web` pour la supervision, la télémétrie, les gateways et les nœuds ;
+- `Application_Mobile` pour la télémétrie, le pairing, la configuration et le provisioning ;
+- `Application_Admin_API` pour le pré-enregistrement matériel ;
+- `MyFreeRTOSProject` côté firmware gateway et node pour le provisioning, le pairing, les heartbeats, la télémétrie et les commandes.
+
+## Portée
+
+L'écosystème backend d'EauSûre repose sur une fragmentation fonctionnelle des APIs. Chaque service couvre un périmètre précis, mais l'ensemble fonctionne de manière complémentaire :
+- **Hardware API** : provisioning, pairing, commandes, télémétrie et orchestration gateway/node ;
+- **Admin API** : administration, pré-enregistrement et gestion des releases firmware ;
+- **Auth API** : authentification, identité, jetons d'accès et OAuth ;
+- **Profile API** : profil utilisateur et préférences.
+
+Dans cette architecture, `Hardware_API` concentre la logique d'échange avec le matériel :
+- **ingestion télémétrique** ;
+- **provisioning gateway** ;
+- **pairing node** ;
+- **configuration et commandes MQTT** ;
+- **état runtime des gateways et nœuds** ;
+- **intégration firmware OTA/FUOTA côté commandes**.
+
+## Vue d'ensemble
 
 ```text
                            +----------------------+
@@ -56,119 +93,194 @@ API -> MongoDB: persist reading
 API -> MQTT: publish live update
 ```
 
-## What This API Does
-
-- accepts sensor data from the gateway over HTTP
-- stores telemetry, signal data, and event data in MongoDB
-- publishes live telemetry to MQTT for dashboards and clients
-- provisions gateways to user accounts
-- manages node pairing sessions and pairing key exchange
-- exposes authenticated routes for gateway and node management
-
-## Tech Stack
+## Stack
 
 - Node.js + Express
 - TypeScript
 - MongoDB + Mongoose
 - MQTT
-- JWT-based user authentication
-- API key authentication for gateway firmware
+- JWT côté routes utilisateur
+- API key côté firmware gateway
 
-## Project Structure
+## Rôle de l'API
 
-| Path | Purpose |
-|------|---------|
-| `src/index.ts` | Express app, middleware, health check, route mounting |
-| `src/config.ts` | Environment configuration |
-| `src/routes/sensorData.ts` | Telemetry ingestion and telemetry queries |
-| `src/routes/gateways.ts` | User-facing gateway and node management routes |
-| `src/routes/registry.ts` | Gateway provisioning, node pairing, admin pre-registration, command ack/heartbeat |
-| `src/services/database.ts` | MongoDB connection |
-| `src/services/mqttService.ts` | MQTT publishing |
-| `src/services/commandService.ts` | Command persistence and MQTT command publishing |
-| `src/services/pairingService.ts` | Pairing token, AP password, proof, and AES key helpers |
-| `src/models/` | MongoDB schemas for users, gateways, nodes, telemetry, commands, and pairing sessions |
-| `api/index.ts` | Vercel entry point |
+- reçoit les données capteurs transmises par la gateway via HTTP
+- stocke la télémétrie, les signaux radio et les événements dans MongoDB
+- publie la télémétrie temps réel sur MQTT pour les dashboards et les clients
+- provisionne les gateways sur les comptes utilisateurs
+- gère les sessions de pairing des nœuds et l'échange des clés de pairing
+- expose des routes authentifiées pour la gestion des gateways et des nœuds
 
-## Authentication Model
+## Consommation de l'API
 
-This repository does not provide user login or registration routes.
+### Depuis `Application_Web`
 
-Instead:
+Les pages web appellent réellement :
+- `GET /api/sensor-data`
+- `GET /api/sensor-data/latest`
+- `GET /api/sensor-data/stats`
+- `GET /api/gateways`
+- `GET /api/gateways/:gatewayId/status`
+- `GET /api/gateways/:gatewayId/nodes`
+- `POST /api/gateways/:gatewayId/nodes/:nodeId/measure`
 
-- user-facing routes expect a valid JWT in `Authorization: Bearer <token>`
-- the JWT secret must match the external auth service that issued the token
-- firmware-facing routes use `X-Gateway-Key` or `X-API-Key`
+Le dépôt web contient aussi des routes proxy Next.js pour :
+- `PUT /api/gateways/:gatewayId/config`
+- `DELETE /api/gateways/:gatewayId`
+- `POST /api/gateways/:gatewayId/pairing/confirm-candidate`
+- `DELETE /api/gateways/:gatewayId/nodes/:nodeId`
+- `PUT /api/gateways/:gatewayId/nodes/:nodeId/config`
+- `POST /api/gateways/:gatewayId/firmware-update`
+- `POST /api/gateways/:gatewayId/nodes/:nodeId/firmware-update`
 
-## Main Flows
+À ce stade, je n'ai pas retrouvé d'appel direct depuis une page React vers ces proxies. Pour le web, la gestion des releases FUOTA passe surtout par `Application_Admin_API`, tandis que les commandes de déploiement matériel sont surtout consommées côté mobile.
 
-### Gateway provisioning
+### Depuis `Application_Mobile`
 
-1. An admin pre-registers the gateway hardware ID and device secret.
-2. The gateway sends `POST /api/registry/gateway/provision` with its hardware ID, device secret, firmware version, and user token.
-3. The API links the gateway to the user account and returns the MQTT command topic.
+Le code consomme notamment :
+- `GET /sensor-data`
+- `GET /sensor-data/latest`
+- `GET /sensor-data/stats`
+- `GET /gateways`
+- `GET /gateways/:gatewayId/nodes`
+- `GET /gateways/:gatewayId/commands/:commandId`
+- `POST /gateways/:gatewayId/pairing/confirm-candidate`
+- `GET /gateways/:gatewayId/pairing/scan`
+- `GET /gateways/:gatewayId/pairing/session/:sessionId`
+- `PUT /gateways/:gatewayId/location`
+- `PUT /gateways/:gatewayId/nodes/:nodeId/config`
+- `DELETE /gateways/:gatewayId/nodes/:nodeId`
+- `POST /gateways/:gatewayId/pairing/cancel`
+- `POST /gateways/:gatewayId/firmware-update`
+- `POST /gateways/:gatewayId/nodes/:nodeId/firmware-update`
+- `POST /gateways/provisioning/session`
 
-### Node pairing
+### Depuis `Application_Admin_API`
 
-1. An admin pre-registers the node ID and device secret.
-2. The mobile/web app confirms a detected pairing candidate through `POST /api/gateways/:gatewayId/pairing/confirm-candidate`.
-3. The API creates a pairing session and publishes `CONFIRM_PAIRING` over MQTT to the gateway.
-4. The gateway fetches and verifies node proof through `POST /api/registry/pair-node/verify-proof`.
-5. The node completes pairing through `POST /api/registry/pair-node`.
-6. The API generates and stores the AES key, then publishes `PAIRING_KEY_READY` to the gateway.
+- `POST /api/registry/admin/pre-register`
 
-### Telemetry ingestion
+### Depuis `MyFreeRTOSProject`
 
-1. The gateway sends `POST /api/sensor-data`.
-2. The API resolves the gateway and paired node from the database.
-3. The reading is stored in `SensorData`.
-4. A live MQTT event is published for dashboards and clients.
+Le firmware consomme directement des routes de registry et de télémétrie, notamment :
+- `POST /api/registry/gateway/provision`
+- `POST /api/registry/pair-node/verify-proof`
+- `POST /api/registry/gateway/heartbeat`
+- `POST /api/registry/command/ack`
+- `POST /api/registry/command/fail`
+- `POST /api/registry/pair-node/rollback`
+- `POST /api/registry/pair-node/fail-session`
+- `GET /api/registry/gateway/:gatewayHardwareId/config`
+- `POST /api/registry/gateways/:gatewayHardwareId/unprovision`
+- `POST /api/registry/pair-node`
+- `POST /api/sensor-data`
 
-## Route Summary
+## Structure du projet
 
-### Public utility
+| Chemin | Rôle |
+|------|------|
+| `src/index.ts` | Application Express, middlewares, route de santé et montage des routes |
+| `src/config.ts` | Configuration de l'environnement |
+| `src/routes/sensorData.ts` | Ingestion télémétrique et requêtes de consultation |
+| `src/routes/gateways.ts` | Routes de gestion des gateways et des nœuds côté utilisateur |
+| `src/routes/registry.ts` | Provisioning gateway, pairing node, pré-enregistrement admin, acquittement de commandes et heartbeat |
+| `src/services/database.ts` | Connexion MongoDB |
+| `src/services/mqttService.ts` | Publication MQTT |
+| `src/services/commandService.ts` | Persistance des commandes et publication MQTT des commandes |
+| `src/services/pairingService.ts` | Aides pour jetons de pairing, mot de passe AP, preuve et clés AES |
+| `src/models/` | Schémas MongoDB pour utilisateurs, gateways, nœuds, télémétrie, commandes et sessions de pairing |
+| `api/index.ts` | Point d'entrée Vercel |
 
-| Method | Path | Notes |
+## Modèle d'authentification
+
+Ce dépôt ne fournit pas de routes de connexion ou d'inscription utilisateur.
+
+À la place :
+
+- les routes côté utilisateur attendent un JWT valide dans `Authorization: Bearer <token>`
+- le secret JWT doit correspondre au service d'authentification externe qui émet le jeton
+- les routes côté firmware utilisent `X-Gateway-Key` ou `X-API-Key`
+
+## Flux principaux
+
+### Provisioning d'une gateway
+
+1. Un administrateur pré-enregistre l'identifiant matériel de la gateway et son secret matériel.
+2. La gateway envoie `POST /api/registry/gateway/provision` avec son identifiant matériel, son secret, sa version firmware et le jeton utilisateur.
+3. L'API rattache la gateway au compte utilisateur et retourne le topic MQTT de commande.
+
+### Pairing d'un nœud
+
+1. Un administrateur pré-enregistre l'identifiant du nœud et son secret matériel.
+2. L'application mobile ou web confirme un candidat de pairing détecté via `POST /api/gateways/:gatewayId/pairing/confirm-candidate`.
+3. L'API crée une session de pairing et publie `CONFIRM_PAIRING` sur MQTT à destination de la gateway.
+4. La gateway récupère et vérifie la preuve du nœud via `POST /api/registry/pair-node/verify-proof`.
+5. Le nœud finalise le pairing via `POST /api/registry/pair-node`.
+6. L'API génère et stocke la clé AES, puis publie `PAIRING_KEY_READY` vers la gateway.
+
+### Ingestion télémétrique
+
+1. La gateway envoie `POST /api/sensor-data`.
+2. L'API résout la gateway et le nœud pairé depuis la base.
+3. La lecture est stockée dans `SensorData`.
+4. Un événement MQTT temps réel est publié pour les tableaux de bord et les clients.
+
+## Résumé des routes
+
+### Utilitaire public
+
+| Méthode | Chemin | Notes |
 |------|------|------|
-| `GET` | `/health` | Health check with MQTT connection status |
+| `GET` | `/health` | Vérification de santé avec état de connexion MQTT |
 
-### Telemetry
+### Télémétrie
 
-| Method | Path | Auth | Notes |
+| Méthode | Chemin | Auth | Notes |
 |------|------|------|------|
-| `POST` | `/api/sensor-data` | Gateway API key | Receive telemetry from gateway |
-| `GET` | `/api/sensor-data` | JWT | Paginated telemetry for authenticated user |
-| `GET` | `/api/sensor-data/latest` | JWT | Latest reading |
-| `GET` | `/api/sensor-data/stats` | JWT | Aggregated stats for a time window |
+| `POST` | `/api/sensor-data` | Clé API gateway | Reçoit la télémétrie depuis la gateway |
+| `GET` | `/api/sensor-data` | JWT | Télémétrie paginée pour l'utilisateur authentifié |
+| `GET` | `/api/sensor-data/latest` | JWT | Dernière lecture |
+| `GET` | `/api/sensor-data/stats` | JWT | Statistiques agrégées sur une fenêtre temporelle |
 
-### Gateways and nodes
+### Gateways et nœuds
 
-| Method | Path | Auth | Notes |
+| Méthode | Chemin | Auth | Notes |
 |------|------|------|------|
-| `GET` | `/api/gateways` | JWT | List gateways for current user |
-| `DELETE` | `/api/gateways/:gatewayId` | JWT | Unlink gateway from current user |
-| `GET` | `/api/gateways/:gatewayId/status` | JWT | Gateway status |
-| `PUT` | `/api/gateways/:gatewayId/config` | JWT | Update gateway config and publish command |
-| `GET` | `/api/gateways/:gatewayId/nodes` | JWT | List nodes attached to a gateway |
-| `POST` | `/api/gateways/:gatewayId/pairing/confirm-candidate` | JWT | Confirm a discovered node candidate |
-| `DELETE` | `/api/gateways/:gatewayId/nodes/:nodeId` | JWT | Unpair node |
-| `POST` | `/api/gateways/:gatewayId/nodes/:nodeId/measure` | JWT | Request immediate measurement |
-| `PUT` | `/api/gateways/:gatewayId/nodes/:nodeId/config` | JWT | Send node config update |
+| `GET` | `/api/gateways` | JWT | Liste les gateways de l'utilisateur courant |
+| `DELETE` | `/api/gateways/:gatewayId` | JWT | Délie une gateway du compte utilisateur courant |
+| `GET` | `/api/gateways/:gatewayId/status` | JWT | État d'une gateway |
+| `GET` | `/api/gateways/:gatewayId/commands/:commandId` | JWT | Récupère l'état d'une commande |
+| `PUT` | `/api/gateways/:gatewayId/config` | JWT | Met à jour la configuration gateway et publie une commande |
+| `GET` | `/api/gateways/:gatewayId/nodes` | JWT | Liste les nœuds rattachés à une gateway |
+| `POST` | `/api/gateways/provisioning/session` | JWT | Crée une session de provisioning pour une gateway |
+| `GET` | `/api/gateways/:gatewayId/pairing/scan` | JWT | Déclenche un scan de pairing via MQTT |
+| `POST` | `/api/gateways/:gatewayId/pairing/confirm-candidate` | JWT | Confirme un candidat de nœud détecté |
+| `GET` | `/api/gateways/:gatewayId/pairing/session/:sessionId` | JWT | Lit l'état d'une session de pairing |
+| `POST` | `/api/gateways/:gatewayId/pairing/cancel` | JWT | Annule un pairing sur la gateway |
+| `PUT` | `/api/gateways/:gatewayId/location` | JWT | Met à jour la localisation de la gateway |
+| `DELETE` | `/api/gateways/:gatewayId/nodes/:nodeId` | JWT | Dé-paire un nœud |
+| `POST` | `/api/gateways/:gatewayId/nodes/:nodeId/measure` | JWT | Demande une mesure immédiate |
+| `PUT` | `/api/gateways/:gatewayId/nodes/:nodeId/config` | JWT | Met à jour la configuration du nœud et envoie éventuellement une config LoRa |
+| `POST` | `/api/gateways/:gatewayId/firmware-update` | JWT | Met en file une mise à jour firmware de gateway |
+| `POST` | `/api/gateways/:gatewayId/nodes/:nodeId/firmware-update` | JWT | Met en file une mise à jour firmware de nœud |
 
-### Registry and firmware integration
+### Registry et intégration firmware
 
-| Method | Path | Auth | Notes |
+| Méthode | Chemin | Auth | Notes |
 |------|------|------|------|
-| `POST` | `/api/registry/admin/pre-register` | JWT admin | Pre-register gateway or node with device secret |
-| `POST` | `/api/registry/gateway/provision` | Token + device secret | Link gateway to user account |
-| `POST` | `/api/registry/gateway/heartbeat` | Gateway API key | Update gateway status and fetch pending commands |
-| `POST` | `/api/registry/command/ack` | Gateway API key | Ack a command |
-| `POST` | `/api/registry/pair-node/verify-proof` | Gateway API key | Verify node proof and issue pairing token |
-| `POST` | `/api/registry/pair-node` | Pairing token | Finalize node pairing and generate AES key |
-| `POST` | `/api/registry/pair-node/rollback` | Gateway API key | Roll back a failed pairing |
-| `POST` | `/api/registry/gateway/node-status` | Gateway API key | Update node active/signal status |
+| `POST` | `/api/registry/admin/pre-register` | JWT admin | Pré-enregistre une gateway ou un nœud avec son secret matériel |
+| `POST` | `/api/registry/gateway/provision` | Jeton + secret matériel | Rattache une gateway à un compte utilisateur |
+| `POST` | `/api/registry/gateway/heartbeat` | Clé API gateway | Met à jour l'état de la gateway et récupère les commandes en attente |
+| `GET` | `/api/registry/gateway/:gatewayHardwareId/config` | Clé API gateway | Récupère la configuration persistée de la gateway et des nœuds |
+| `POST` | `/api/registry/command/ack` | Clé API gateway | Acquitte une commande |
+| `POST` | `/api/registry/command/fail` | Clé API gateway | Marque une commande comme échouée |
+| `POST` | `/api/registry/pair-node/verify-proof` | Clé API gateway | Vérifie la preuve du nœud et émet un jeton de pairing |
+| `POST` | `/api/registry/pair-node` | Jeton de pairing | Finalise le pairing du nœud et génère la clé AES |
+| `POST` | `/api/registry/pair-node/rollback` | Clé API gateway | Annule un pairing échoué |
+| `POST` | `/api/registry/pair-node/fail-session` | Clé API gateway | Marque une session comme échouée avant émission du jeton |
+| `POST` | `/api/registry/gateway/node-status` | Clé API gateway | Met à jour l'état actif et le signal d'un nœud |
+| `POST` | `/api/registry/gateways/:gatewayHardwareId/unprovision` | Clé API gateway | Marque une gateway comme déprovisionnée |
 
-## Example Telemetry Request
+## Exemple de requête télémétrique
 
 ```http
 POST /api/sensor-data
@@ -199,55 +311,42 @@ Content-Type: application/json
 }
 ```
 
-## Environment Variables
+## Variables d'environnement
 
-Copy `.env.example` to `.env` and update the values.
-
-Important variables:
-
-```env
-NODE_ENV=development
-PORT=3000
-API_BASE_URL=http://localhost:3000
-
-JWT_SECRET=your-shared-jwt-secret
-MONGODB_URI=mongodb://localhost:27017/water-quality-monitor
-GATEWAY_API_KEY=your-gateway-api-key
-
-MQTT_BROKER_URL=mqtt://broker.hivemq.com
-MQTT_PORT=1883
-MQTT_CLIENT_ID=water-quality-api-broadcaster
-MQTT_PUBLISH_TOPIC=water-quality/live-data
-```
-
-Notes:
-
-- `JWT_SECRET` must match the external auth service issuing user tokens.
-- `GATEWAY_API_KEY` must match the value used by gateway firmware.
-- MQTT is optional for live updates, but the API is built around publishing commands and telemetry events when available.
-
-## Deployment
-
-This project includes `api/index.ts` for Vercel deployment and `vercel.json` for routing.
-
-Set these environment variables in the deployment platform:
-
+Variables principales utilisées par `src/config.ts` :
+- `NODE_ENV`
+- `PORT`
+- `API_BASE_URL`
 - `JWT_SECRET`
 - `MONGODB_URI`
+- `MONGODB_CONNECT_TIMEOUT_MS`
+- `MONGODB_SERVER_SELECTION_TIMEOUT_MS`
 - `GATEWAY_API_KEY`
-- `API_BASE_URL`
 - `MQTT_BROKER_URL`
 - `MQTT_PORT`
-- `MQTT_USERNAME` and `MQTT_PASSWORD` if your broker requires them
+- `MQTT_USERNAME`
+- `MQTT_PASSWORD`
+- `MQTT_CLIENT_ID`
+- `MQTT_PUBLISH_TOPIC`
+- `MQTT_QOS`
+- `RATE_LIMIT_WINDOW_MS`
+- `RATE_LIMIT_MAX_REQUESTS`
+- `CORS_ORIGIN`
+- `LOG_LEVEL`
+
+
+Notes :
+
+- `JWT_SECRET` doit correspondre au service d'authentification externe qui émet les jetons utilisateur.
+- `GATEWAY_API_KEY` doit correspondre à la valeur utilisée par le firmware gateway.
+
+## Déploiement
+
+Ce projet inclut `api/index.ts` pour le déploiement Vercel ainsi que `vercel.json` pour le routage.
+
 
 ## Notes
 
-- Commands are stored in MongoDB and also published over MQTT.
-- Pairing sessions and commands use TTL-backed expiration in MongoDB.
-- The API expects gateways and nodes to be pre-registered before provisioning and pairing.
-
-## License
-
-This project is currently marked as `UNLICENSED`.
-
-This repository is private and is not currently released under an open-source license.
+- Les commandes sont stockées dans MongoDB puis également publiées sur MQTT.
+- Les sessions de pairing et les commandes utilisent une expiration TTL côté MongoDB.
+- L'API attend que les gateways et les nœuds soient pré-enregistrés avant provisioning et pairing.
